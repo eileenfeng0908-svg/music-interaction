@@ -72,6 +72,7 @@ button:disabled { color: var(--line); cursor: default; }
 <script src="audio/track-1-1.js"></script>
 <script src="audio/track-2-1.js"></script>
 <script src="audio/track-3-1.js"></script>
+<script src="audio/track-4-1.js"></script>
 <script>
 // ================================================================
 // 1. THE ROOMS — five styles, each with three pieces.
@@ -91,9 +92,14 @@ const ROOMS = [
   { pieces: [
       { sound: "file", file: "3-1", art: "sun" },
       { sound: "generated", make: "prelude", art: "heaven" },
-      { sound: "generated", make: "sunny",   art: "meadow" }
+      { sound: "generated", make: "sunny",   art: "lilies" }
   ] },
-  null, null // rooms 4 and 5 arrive later
+  { pieces: [
+      { sound: "file", file: "4-1", art: "guitarist" },
+      { sound: "generated", make: "lament",    art: "scream" },
+      { sound: "generated", make: "nocturne",  art: "chapel" }
+  ] },
+  null // room 5 arrives later
 ];
 let roomIndex = 0, pieceIndex = 0;
 
@@ -1836,164 +1842,633 @@ function heavenScene(t, dt, box) {
   g.restore();
 }
 
-// --- Room 3, piece iii: a painted meadow of yellow flowers in the wind, a girl in a white dress with her arms open ---
-const meadow = { key: "", sky: null, hills: null, ground: null, sprites: [], clumps: [], clouds: [], gusts: [], sway: 0, petals: [] };
-// One clump of rapeseed: thin stems topped with domes of little four-petal flowers, painted once and reused.
-function paintClump(s, seed) {
-  return offscreen(s, s * 1.4, (cw, ch) => {
-    const r = seeded(seed), heads = [];
-    for (let i = 0; i < 5; i++) heads.push([cw * (0.25 + r() * 0.5), ch * (0.12 + r() * 0.3)]);
-    g.lineCap = "round";
-    heads.forEach(([hx, hy]) => { // stems and a few blue-green leaves
-      g.strokeStyle = paint([92, 128, 52], 24, r); g.lineWidth = cw * 0.025;
-      g.beginPath(); g.moveTo(cw * 0.5 + (r() - 0.5) * cw * 0.1, ch); g.quadraticCurveTo(hx + (r() - 0.5) * cw * 0.2, (hy + ch) / 2, hx, hy); g.stroke();
-      for (let k = 0; k < 2; k++) { const ly = hy + (ch - hy) * (0.4 + r() * 0.4); g.save(); g.translate(hx + (cw * 0.5 - hx) * 0.5, ly); g.rotate((r() - 0.5) * 2.4); leaf(cw * 0.12, cw * 0.05); g.fillStyle = paint([86, 122, 70], 20, r); g.fill(); g.restore(); }
-    });
-    heads.forEach(([hx, hy]) => { // flower domes: darker gold underneath, sunlit lemon on top
-      for (let i = 0; i < 34; i++) {
-        const a = r() * TAU, d = Math.sqrt(r()), x = hx + Math.cos(a) * d * cw * 0.13, y = hy + Math.sin(a) * d * cw * 0.09, top = 1 - (y - hy + cw * 0.09) / (cw * 0.18);
-        const c = mixc([196, 140, 18], [255, 232, 92], Math.max(0, Math.min(1, top * 0.8 + r() * 0.35))), fr = cw * (0.018 + r() * 0.012);
-        g.fillStyle = paint(c, 18, r);
-        for (let p = 0; p < 4; p++) { const pa = p * TAU / 4 + a; g.beginPath(); g.ellipse(x + Math.cos(pa) * fr, y + Math.sin(pa) * fr, fr * 1.1, fr * 0.7, pa, 0, TAU); g.fill(); }
-      }
-      for (let i = 0; i < 6; i++) { g.beginPath(); g.arc(hx + (r() - 0.5) * cw * 0.12, hy - cw * 0.06 + (r() - 0.5) * cw * 0.05, cw * 0.012, 0, TAU); g.fillStyle = "rgb(110,140,60)"; g.fill(); } // green buds on top
-    });
-  });
-}
-// The girl, seen from behind, painted live so her dress, hair and arms can move.
-function drawGirl(x, y, k, t, open, wind) {
-  const X = v => x + v * k, Y = v => y + v * k, r = seeded(31);
-  const skinG = (x1, y1, x2, y2) => { const sg = g.createLinearGradient(X(x1), Y(y1), X(x2), Y(y2)); sg.addColorStop(0, "rgb(244,206,176)"); sg.addColorStop(1, "rgb(196,136,108)"); return sg; };
-  // arms, opened wide; they rise with the music
-  for (const s of [-1, 1]) {
-    const up = 0.25 + open * 0.55 + Math.sin(t * 1.3 + s) * 0.05;
-    const sh = [s * 8, -34], a1 = s > 0 ? -up * 0.5 : Math.PI + up * 0.5, a2 = s > 0 ? -up * 0.8 : Math.PI + up * 0.8;
-    const el = [sh[0] + Math.cos(a1) * 13, sh[1] + Math.sin(a1) * 13], wr = [el[0] + Math.cos(a2) * 12, el[1] + Math.sin(a2) * 12];
-    limb([X(sh[0]), Y(sh[1])], [X(el[0]), Y(el[1])], [X(wr[0]), Y(wr[1])], k * 3.6, k * 2.6, k * 2);
-    g.fillStyle = skinG(sh[0], sh[1] - 2, sh[0], sh[1] + 4); g.fill();
-    hand(X(wr[0]), Y(wr[1]), a2, k * 1.5, 0.15 + open * 0.1, "rgb(222,170,140)");
-  }
-  // bare shoulders and back, with thin straps
-  g.beginPath(); g.moveTo(X(-9), Y(-33)); g.quadraticCurveTo(X(0), Y(-37), X(9), Y(-33)); g.lineTo(X(7), Y(-20)); g.lineTo(X(-7), Y(-20)); g.closePath();
-  g.fillStyle = skinG(-8, -36, 8, -22); g.fill();
-  // the dress: a fitted bodice and a full skirt that the wind presses and lifts
-  const lift = wind * 6, dress = () => {
-    g.beginPath(); g.moveTo(X(-7.5), Y(-27)); g.quadraticCurveTo(X(0), Y(-29), X(7.5), Y(-27)); g.lineTo(X(6.5), Y(-12));
-    g.bezierCurveTo(X(10 + lift * 0.5), Y(-4), X(14 + lift), Y(6), X(17 + lift * 1.6), Y(16 - lift * 0.4));
-    for (let i = 1; i <= 8; i++) { const p = i / 8; g.lineTo(X(17 + lift * 1.6 - p * 33 + lift * Math.sin(p * 3) * 0.6), Y(16 - lift * 0.4 * (1 - p) + Math.sin(p * 9 + t * 4) * 1.2)); }
-    g.bezierCurveTo(X(-13 + lift * 0.2), Y(4), X(-10), Y(-4), X(-6.5), Y(-12)); g.closePath();
-  };
-  dress();
-  const dg = g.createLinearGradient(X(-16), 0, X(18), 0);
-  dg.addColorStop(0, "rgb(252,250,244)"); dg.addColorStop(0.55, "rgb(236,232,222)"); dg.addColorStop(1, "rgb(186,182,184)");
-  g.fillStyle = dg; g.fill();
-  g.save(); dress(); g.clip(); // folds and brush marks in the cloth
-  g.lineCap = "round";
-  for (let i = 0; i < 7; i++) { const fx = -9 + i * 3.6; g.strokeStyle = `rgba(160,156,168,${0.35 + r() * 0.2})`; g.lineWidth = k * (0.6 + r() * 0.8); g.beginPath(); g.moveTo(X(fx * 0.4), Y(-11)); g.quadraticCurveTo(X(fx * 0.8 + lift * 0.4), Y(2), X(fx * 1.3 + lift * 1.1), Y(17)); g.stroke(); }
-  for (let i = 0; i < 70; i++) { g.globalAlpha = 0.25; brush(X(-14 + r() * 30), Y(-26 + r() * 42), k * (1 + r() * 1.5), k * 0.35, 1.2 + (r() - 0.5) * 0.5, paint(r() < 0.5 ? [255, 255, 250] : [200, 196, 204], 10, r)); }
-  g.globalAlpha = 1; g.restore();
-  g.strokeStyle = "rgb(236,232,222)"; g.lineWidth = k * 0.9; for (const s of [-1, 1]) { g.beginPath(); g.moveTo(X(s * 5), Y(-27)); g.lineTo(X(s * 6), Y(-34.5)); g.stroke(); }
-  // a sash tied at the back, its ends flying
-  g.fillStyle = "rgb(196,96,74)"; g.fillRect(X(-6.8), Y(-14), k * 13.6, k * 2.2);
-  for (const e of [0, 1]) { g.beginPath(); g.moveTo(X(0), Y(-13)); g.quadraticCurveTo(X(5 + wind * 5), Y(-10 + e * 3), X(9 + wind * 9 + Math.sin(t * 6 + e) * 1.5), Y(-7 + e * 4)); g.lineWidth = k * 1.3; g.strokeStyle = e ? "rgb(170,78,60)" : "rgb(206,110,84)"; g.stroke(); }
-  // head from behind, and long hair streaming out to the side in the wind
-  g.beginPath(); g.ellipse(X(0), Y(-42), 5.2 * k, 6 * k, 0, 0, TAU);
-  const hg = g.createLinearGradient(X(-5), Y(-48), X(5), Y(-36)); hg.addColorStop(0, "rgb(120,78,44)"); hg.addColorStop(1, "rgb(52,32,22)"); g.fillStyle = hg; g.fill();
-  for (let i = 0; i < 46; i++) {
-    const sx = -4.5 + r() * 9, sy = -44 + r() * 7, len = 14 + r() * 12, flow = 0.4 + wind * 0.6 + S.mid * 0.4;
-    g.strokeStyle = paint(r() < 0.3 ? [168, 116, 66] : [86, 54, 32], 24, r); g.lineWidth = k * (0.4 + r() * 0.6);
-    g.beginPath(); g.moveTo(X(sx), Y(sy));
-    g.bezierCurveTo(X(sx + 2), Y(sy + len * 0.4), X(sx + len * flow * 0.6), Y(sy + len * (0.75 - flow * 0.2) + Math.sin(t * 3 + i) * 1.2), X(sx + len * flow), Y(sy + len * (0.9 - flow * 0.45) + Math.sin(t * 4 + i * 0.7) * 2)); g.stroke();
-  }
-  // a daisy tucked behind her ear
-  for (let p = 0; p < 8; p++) { const a = p * TAU / 8; g.beginPath(); g.ellipse(X(-4.6 + Math.cos(a) * 1.3), Y(-44 + Math.sin(a) * 1.3), k * 1, k * 0.45, a, 0, TAU); g.fillStyle = "rgb(252,250,244)"; g.fill(); }
-  g.beginPath(); g.arc(X(-4.6), Y(-44), k * 0.7, 0, TAU); g.fillStyle = "rgb(240,190,40)"; g.fill();
-  g.lineCap = "butt";
-}
-function meadowScene(t, dt, box) {
-  const h = box.h, w = Math.min(box.w, h * 0.8), x0 = box.x + (box.w - w) / 2, y0 = box.y, hz = h * 0.4;
-  const key = Math.round(w) + "x" + Math.round(h) + "@" + DPR;
-  if (meadow.key !== key) {
-    meadow.key = key;
-    meadow.sky = paintSky(w, hz + 4, 12, [78, 132, 204], [150, 190, 228], [222, 230, 232]);
-    meadow.clouds = [0, 1, 2, 3].map(i => ({ c: paintCloud(w * (0.45 + (i % 2) * 0.2), w * (0.22 + (i % 2) * 0.06), 80 + i, false), x: [0.0, 0.5, 0.2, 0.7][i], y: [0.04, 0.12, 0.3, 0.42][i], v: 0.008 + i * 0.003 }));
-    meadow.hills = offscreen(w, h * 0.16, (fw, fh) => { // far hills and a dark line of trees, hazy blue-green
-      const r = seeded(14);
-      for (const [lvl, col] of [[0.25, [132, 160, 170]], [0.55, [96, 128, 104]]]) {
-        g.beginPath(); g.moveTo(0, fh);
-        for (let i = 0; i <= 30; i++) g.lineTo(i * fw / 30, fh * (lvl + Math.sin(i * 0.5 + lvl * 9) * 0.12 + Math.sin(i * 1.7) * 0.05));
-        g.lineTo(fw, fh); g.closePath(); g.fillStyle = `rgb(${col})`; g.fill();
-        for (let i = 0; i < fw * 1.5; i++) { const x = r() * fw, y = fh * (lvl + 0.1 + r() * (0.9 - lvl)); brush(x, y, 2 + r() * 3, 1 + r(), (r() - 0.5) * 0.6, paint(col, 22, r)); }
-      }
-      for (let i = 0; i < 26; i++) { const x = r() * fw, y = fh * (0.62 + r() * 0.2), s = fh * (0.08 + r() * 0.1); for (let j = 0; j < 14; j++) brush(x + (r() - 0.5) * s, y - r() * s, s * 0.3, s * 0.2, r() * 3, paint([58, 84, 62], 20, r)); }
-    });
-    const gh = h - hz;
-    meadow.ground = offscreen(w, gh, (fw, fh) => { // the field itself: a sea of yellow, strokes growing bigger towards us
-      const r = seeded(21);
-      const gr = g.createLinearGradient(0, 0, 0, fh); gr.addColorStop(0, "rgb(206,196,96)"); gr.addColorStop(0.3, "rgb(238,204,44)"); gr.addColorStop(1, "rgb(196,170,40)");
-      g.fillStyle = gr; g.fillRect(0, 0, fw, fh);
-      for (let i = 0; i < fw * fh / 14; i++) {
-        const y = fh * Math.pow(r(), 1.3), x = r() * fw, d = y / fh, sz = 1.2 + d * d * 9, n = fbm(x * 0.02 / (0.3 + d), y * 0.05);
-        const c = n < 0.38 ? [96, 126, 50] : n > 0.62 ? [255, 234, 100] : [242, 206, 38];
-        brush(x, y, sz * (1 + r()), sz * 0.45, (r() - 0.5) * 0.7, paint(mixc(c, [214, 214, 190], (1 - d) * 0.35), 26, r));
-      }
-    });
-    const s = Math.round(h * 0.16);
-    meadow.sprites = [0, 1, 2, 3, 4, 5].map(i => paintClump(s, 100 + i));
-    const r = seeded(4); meadow.clumps = [];
-    for (let row = 0; row < 22; row++) { // rows from the horizon to the front, bigger and fewer as they come closer
-      const d = Math.pow((row + 1) / 22, 1.9), n = Math.round(30 - d * 23);
-      for (let i = 0; i < n; i++) meadow.clumps.push({ x: (i + r()) / n, d: d * (0.97 + r() * 0.06), sp: Math.floor(r() * 6), ph: r() * TAU });
-    }
-    meadow.clumps.sort((a, b) => a.d - b.d);
-    // smaller copies of each clump, so far-off flowers aren't shrunk from a big picture every frame
-    meadow.mips = meadow.sprites.map(sp => [0.25, 0.5].map(k => offscreen(sp.w * k, sp.h * k, (mw, mh) => g.drawImage(sp, 0, 0, mw, mh))));
-    // the far rows barely move, so they are painted into the field once
-    meadow.far = offscreen(w, h - hz, () => {
-      for (const c of meadow.clumps) if (c.d < 0.36) { const sc = 0.07 + c.d * c.d * 1.55, sp = meadow.sprites[c.sp], cw = sp.w * sc, ch = sp.h * sc; g.drawImage(sp, c.x * w - cw / 2, (h - hz) * c.d + ch * 0.25 - ch, cw, ch); }
-    });
-  }
-  // each beat sends a gust rolling across the field; gusts overlap instead of restarting, so nothing snaps back
-  meadow.gusts = meadow.gusts.filter(q => (q.x += dt * 0.45) < 1.6);
-  meadow.sway += (S.mid - meadow.sway) * Math.min(1, dt * 1.5); // the breeze follows the music slowly, not in jumps
-  const windAt = (fx, ph) => {
-    let gu = 0; for (const q of meadow.gusts) gu += q.a * Math.exp(-Math.pow((fx - q.x) * 3, 2)) * Math.min(1, q.x + 0.3);
-    return Math.sin(fx * 6 - t * 1.8 + ph * 0.3) * (0.1 + meadow.sway * 0.16) + Math.sin(fx * 13 - t * 3.1 + ph) * 0.03 + Math.min(gu, 0.4) * 0.6;
-  };
-  g.save(); g.beginPath(); g.rect(x0, y0, w, h); g.clip();
-  blit(meadow.sky, x0, y0);
-  meadow.clouds.forEach(cl => { cl.x += dt * cl.v * (0.5 + S.mid); if (cl.x > 1.05) cl.x = -cl.c.w / w; blit(cl.c, Math.round(x0 + cl.x * w), Math.round(y0 + cl.y * hz)); });
-  blit(meadow.hills, x0, y0 + hz - h * 0.12);
-  blit(meadow.ground, x0, y0 + hz);
-  blit(meadow.far, x0, y0 + hz);
-  // the girl stands in the middle distance; clumps behind her are drawn first, the nearer ones over her legs
-  const girlD = 0.38, sprite = meadow.sprites[0], wind = windAt(0.5, 0) * 2.2 + 0.25;
-  const open = Math.min(1, 0.3 + Math.sin(t * 0.7) * 0.15 + S.mid * 0.6 + S.bass * 0.3);
-  const gx = x0 + w * (0.48 + Math.sin(t * 0.13) * 0.04), gy = y0 + hz + (h - hz) * girlD;
-  let girlDone = false;
-  for (const c of meadow.clumps) {
-    if (!girlDone && c.d > girlD + 0.03) { drawGirl(gx, gy, h * 0.0042, t, open, wind); girlDone = true; }
-    if (c.d < 0.36) continue;
-    const sc = 0.07 + c.d * c.d * 1.55, sp = sc < 0.25 ? meadow.mips[c.sp][0] : sc < 0.5 ? meadow.mips[c.sp][1] : meadow.sprites[c.sp], cw = meadow.sprites[c.sp].w * sc, ch = meadow.sprites[c.sp].h * sc;
-    const bx = x0 + c.x * w, by = y0 + hz + (h - hz) * c.d + ch * 0.25;
-    if (bx < x0 - cw || bx > x0 + w + cw) continue;
-    c.lean = (c.lean || 0) + (windAt(c.x, c.ph) * (0.6 + c.d * 0.6) - (c.lean || 0)) * Math.min(1, dt * 5); const lean = c.lean; // stems have a little weight, so they lag
-    g.save(); g.translate(bx, by); g.rotate(lean); g.drawImage(sp, -cw / 2, -ch, cw, ch); g.restore();
-  }
-  if (!girlDone) drawGirl(gx, gy, h * 0.0042, t, open, wind);
-  // flowers torn loose by the gusts, tumbling past
-  meadow.petals = meadow.petals.filter(p => (p.life -= dt) > 0 && p.x < x0 + w + 20);
-  meadow.petals.forEach(p => {
-    p.x += (p.vx + windAt((p.x - x0) / w, 0) * 160) * dt; p.y += p.vy * dt; p.vy += (12 - p.vy * 0.5) * dt; p.a += dt * 5;
-    g.save(); g.translate(p.x, p.y); g.rotate(p.a);
-    for (let q = 0; q < 4; q++) { g.beginPath(); g.ellipse(Math.cos(q * TAU / 4) * p.s, Math.sin(q * TAU / 4) * p.s, p.s * 1.1, p.s * 0.65, q * TAU / 4, 0, TAU); g.fillStyle = q % 2 ? "rgb(250,222,60)" : "rgb(230,186,30)"; g.fill(); }
+// --- Room 3, piece iii: after Monet — a lily pond in broken dabs of colour; the music sends ripples across it ---
+const lilies = { key: "", water: null, grain: null, pads: [], glints: [], ripples: [], padSprites: [], flower: null };
+// A lily pad, painted once: a round leaf with a notch, laid in with short strokes of several greens.
+function paintPad(s, seed) {
+  return offscreen(s, s, () => {
+    const r = seeded(seed), R = s * 0.48, notch = r() * TAU;
+    const pad = () => { g.beginPath(); g.moveTo(s / 2, s / 2); g.arc(s / 2, s / 2, R, notch + 0.25, notch + TAU - 0.25); g.closePath(); };
+    pad(); g.fillStyle = paint([64, 112, 70], 16, r); g.fill();
+    g.save(); pad(); g.clip();
+    for (let i = 0; i < s * s / 9; i++) { const x = r() * s, y = r() * s, light = (s - x - y) / s; brush(x, y, s * (0.04 + r() * 0.05), s * 0.018, r() * TAU, paint(mixc([46, 92, 64], [170, 190, 96], Math.max(0, light * 0.6 + r() * 0.4)), 26, r)); }
     g.restore();
+    for (let i = 0; i < 70; i++) { const a = r() * TAU; if (Math.abs(((a - notch + Math.PI * 3) % TAU) - Math.PI) > Math.PI - 0.3) continue; brush(s / 2 + Math.cos(a) * R * 0.95, s / 2 + Math.sin(a) * R * 0.95, s * 0.05, s * 0.02, a + Math.PI / 2, paint([70, 118, 72], 30, r)); } // a broken, painterly edge
   });
+}
+// A water lily, seen a little from the side: a cup of pointed petals opening upwards around a golden heart.
+function paintLily(s, base) {
+  return offscreen(s, s, () => {
+    const r = seeded(7); g.translate(s / 2, s * 0.62);
+    const petal = (a, len, wid, k) => {
+      g.save(); g.rotate(a); g.beginPath(); g.moveTo(0, 0); g.quadraticCurveTo(s * len * 0.5, -s * wid, s * len, 0); g.quadraticCurveTo(s * len * 0.5, s * wid, 0, 0);
+      const pg = g.createLinearGradient(0, 0, s * len, 0); pg.addColorStop(0, `rgb(${mixc(base, [255, 250, 240], k * 0.5).map(Math.round)})`); pg.addColorStop(1, `rgb(${mixc(base, [255, 252, 250], k).map(Math.round)})`);
+      g.fillStyle = pg; g.fill(); g.strokeStyle = `rgba(${mixc(base, [110, 40, 70], 0.5).map(Math.round)},0.45)`; g.lineWidth = 0.7; g.stroke(); g.restore();
+    };
+    for (const a of [-0.1, Math.PI + 0.1, 0.25, Math.PI - 0.25]) petal(a, 0.44, 0.07, 0.2 + r() * 0.2); // outer petals lying on the water
+    for (let i = 0; i < 7; i++) petal(Math.PI + 0.35 + i * 0.4, 0.4, 0.075, 0.35 + r() * 0.3); // the back of the cup
+    g.beginPath(); g.ellipse(0, -s * 0.05, s * 0.07, s * 0.04, 0, 0, TAU); g.fillStyle = "rgb(242,196,64)"; g.fill();
+    for (let i = 0; i < 6; i++) petal(Math.PI + 0.55 + i * 0.4, 0.3, 0.08, 0.6 + r() * 0.3); // the front of the cup, palest
+  });
+}
+function liliesBeat() {
+  if (!lilies.pads.length) return;
+  const p = lilies.pads[Math.floor(Math.random() * lilies.pads.length)];
+  lilies.ripples.push({ x: p.x, y: p.y, r: 0, life: 1 });
+  if (lilies.ripples.length > 6) lilies.ripples.shift();
+}
+function liliesScene(t, dt, box) {
+  const h = box.h, w = Math.min(box.w, h * 0.85), x0 = box.x + (box.w - w) / 2, y0 = box.y;
+  const key = Math.round(w) + "x" + Math.round(h) + "@" + DPR;
+  if (lilies.key !== key) {
+    lilies.key = key;
+    lilies.grain = canvasGrain(w, h, 33);
+    lilies.water = offscreen(w, h, (fw, fh) => { // the pond: sky and willows reflected, all in short horizontal dabs
+      const r = seeded(34);
+      const gr = g.createLinearGradient(0, 0, 0, fh); gr.addColorStop(0, "rgb(60,96,104)"); gr.addColorStop(0.45, "rgb(150,160,196)"); gr.addColorStop(1, "rgb(96,130,150)");
+      g.fillStyle = gr; g.fillRect(0, 0, fw, fh);
+      for (let i = 0; i < fw * fh / 12; i++) {
+        const x = r() * fw, y = r() * fh, k = y / fh, n = fbm(x * 0.006, y * 0.012), wil = Math.max(0, Math.min(1, (fbm(x * 0.02, 3.3) - 0.5) * 8)) * Math.max(0, 1 - k * 1.7) * (0.5 + r() * 0.5);
+        let c = k < 0.45 ? mixc([70, 108, 112], [164, 170, 208], k / 0.45) : mixc([164, 170, 208], [92, 128, 150], (k - 0.45) / 0.55);
+        if (n > 0.6) c = mixc(c, [236, 196, 206], (n - 0.6) * 2.2); // pink cloud reflected
+        if (n < 0.33) c = mixc(c, [236, 220, 160], (0.33 - n) * 2); // a little gold light
+        c = mixc(c, [40, 76, 60], wil * 0.7); // dark willow reflections hanging down
+        brush(x, y, 3 + r() * 6 + k * 4, 1 + r() * 1.2 + k, wil > 0.4 ? 1.5 + (r() - 0.5) * 0.4 : (r() - 0.5) * 0.25, paint(c, 22, r));
+      }
+    });
+    const r = seeded(35), ps = Math.round(w * 0.2);
+    lilies.padSprites = [0, 1, 2, 3, 4].map(i => paintPad(ps, 40 + i));
+    lilies.flowers = [[236, 150, 180], [250, 240, 236], [240, 120, 150]].map(c => paintLily(Math.round(w * 0.12), c));
+    lilies.pads = [];
+    for (let i = 0; i < 30; i++) { // clusters of pads, smaller and flatter towards the far bank
+      const y = Math.pow(r(), 0.8), x = r(), d = 0.35 + y * 0.9;
+      lilies.pads.push({ x, y, d, sp: Math.floor(r() * 5), ph: r() * TAU, bloom: r() < 0.35 ? Math.floor(r() * 3) : -1, bob: 0 });
+    }
+    lilies.pads.sort((a, b) => a.y - b.y);
+    lilies.glints = [];
+    for (let i = 0; i < 200; i++) lilies.glints.push({ x: r(), y: r(), l: 3 + r() * 6, c: r() < 0.3 ? [246, 236, 230] : r() < 0.5 ? [186, 190, 232] : [232, 196, 214], ph: r() * TAU });
+  }
+  g.save(); g.beginPath(); g.rect(x0, y0, w, h); g.clip();
+  blit(lilies.water, x0, y0);
+  // light dancing on the water: little dabs that shiver with the high notes
+  lilies.glints.forEach(q => {
+    const a = 0.25 + 0.5 * Math.max(0, Math.sin(t * 1.6 + q.ph)) * (0.5 + S.high * 3);
+    g.globalAlpha = Math.min(0.9, a); brush(x0 + q.x * w + Math.sin(t * 0.8 + q.ph) * 2, y0 + q.y * h, q.l * (0.6 + q.y), 0.6 + q.y * 0.8, 0, `rgb(${q.c})`);
+  });
+  g.globalAlpha = 1;
+  // ripples spreading from where the beat lands, flattened by perspective
+  lilies.ripples = lilies.ripples.filter(rp => (rp.life -= dt * 0.45) > 0);
+  lilies.ripples.forEach(rp => {
+    rp.r += dt * w * 0.12;
+    const cx = x0 + rp.x * w, cy = y0 + rp.y * h, flat = 0.25 + rp.y * 0.35;
+    for (let k = 0; k < 3; k++) {
+      const rr = rp.r - k * w * 0.025; if (rr <= 0) continue;
+      g.strokeStyle = `rgba(240,240,250,${rp.life * 0.55})`; g.lineWidth = 1.4; g.setLineDash([6, 5]);
+      g.beginPath(); g.ellipse(cx, cy, rr, rr * flat, 0, 0, TAU); g.stroke();
+    }
+    g.setLineDash([]);
+  });
+  // the pads, rocking gently; a ripple passing under lifts them
+  const ps = lilies.padSprites[0].w;
+  lilies.pads.forEach(p => {
+    let lift = 0;
+    lilies.ripples.forEach(rp => { const dist = Math.hypot((p.x - rp.x) * w, (p.y - rp.y) * h / (0.25 + rp.y * 0.35)); if (Math.abs(dist - rp.r) < w * 0.05) lift += rp.life; });
+    p.bob += (lift - p.bob) * Math.min(1, dt * 6);
+    const s = ps * p.d * (1 + S.spec[p.sp * 3] * 0.04), flat = 0.3 + p.y * 0.35;
+    const px = x0 + p.x * w + Math.sin(t * 0.4 + p.ph) * 3, py = y0 + p.y * h + Math.sin(t * 0.7 + p.ph) * 1.5 - p.bob * 3;
+    g.save(); g.translate(px, py); g.scale(1, flat); g.rotate(p.ph + Math.sin(t * 0.3 + p.ph) * 0.08 + p.bob * 0.1);
+    g.drawImage(lilies.padSprites[p.sp], -s / 2, -s / 2, s, s); g.restore();
+    if (p.bloom >= 0) { // a lily in flower, opening a little wider with the music
+      const fs = lilies.flowers[p.bloom].w * p.d * (0.95 + S.spec[(p.sp * 5) % 16] * 0.2);
+      g.drawImage(lilies.flowers[p.bloom], px - fs / 2, py - fs * 0.62, fs, fs);
+    }
+  });
+  g.globalCompositeOperation = "multiply"; blit(lilies.grain, x0, y0); g.globalCompositeOperation = "source-over";
   g.restore();
 }
-function meadowBeat() {
-  if (meadow.gusts.length < 4) meadow.gusts.push({ x: -0.3, a: 0.25 + S.bass * 0.3 });
-  if (W) for (let k = 0; k < 5; k++) meadow.petals.push({ x: W * (0.25 + Math.random() * 0.3), y: H * (0.35 + Math.random() * 0.4), vx: 30 + Math.random() * 50, vy: -30 - Math.random() * 40, a: Math.random() * TAU, s: 2 + Math.random() * 3, life: 4 });
+
+// --- Room 4 instruments: bowed strings, a pipe organ, a music box, a slow bell and a timpani, all in a big stone room ---
+function minorKit(ctx, out) {
+  // a hall: a burst of noise that dies away slowly, used as the room's echo
+  const len = Math.floor(ctx.sampleRate * 3.2), ir = ctx.createBuffer(2, len, ctx.sampleRate);
+  for (let c = 0; c < 2; c++) { const d = ir.getChannelData(c); for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 3.2); }
+  const verb = ctx.createConvolver(), wet = ctx.createGain(); verb.buffer = ir; wet.gain.value = 0.45; verb.connect(wet).connect(out);
+  const bus = ctx.createGain(); bus.connect(out); bus.connect(verb);
+  const noise = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate), nd = noise.getChannelData(0);
+  for (let i = 0; i < nd.length; i++) nd[i] = Math.random() * 2 - 1;
+  const env = (gn, t, a, peak, hold, rel) => { gn.gain.setValueAtTime(0, t); gn.gain.linearRampToValueAtTime(peak, t + a); gn.gain.setValueAtTime(peak, t + a + hold); gn.gain.linearRampToValueAtTime(0, t + a + hold + rel); };
+  return {
+    // a bowed string: two detuned saws, a vibrato that grows in, a soft attack
+    bow(t, f, len, v = 1, attack = 0.12) {
+      const o1 = ctx.createOscillator(), o2 = ctx.createOscillator(), fl = ctx.createBiquadFilter(), gn = ctx.createGain(), lfo = ctx.createOscillator(), depth = ctx.createGain();
+      o1.type = o2.type = "sawtooth"; o1.frequency.value = f; o2.frequency.value = f * 1.004;
+      lfo.frequency.value = 5.2; depth.gain.setValueAtTime(0, t); depth.gain.linearRampToValueAtTime(f * 0.007, t + Math.min(0.6, len));
+      lfo.connect(depth); depth.connect(o1.frequency); depth.connect(o2.frequency);
+      fl.type = "lowpass"; fl.frequency.value = Math.min(3600, f * 4.5); fl.Q.value = 0.7;
+      env(gn, t, attack, 0.05 * v, Math.max(0, len - attack), 0.35);
+      o1.connect(fl); o2.connect(fl); fl.connect(gn).connect(bus);
+      for (const n of [o1, o2, lfo]) { n.start(t); n.stop(t + len + 0.5); }
+    },
+    // a pipe organ: a stack of pure ranks (8', 4', 2 2/3', 2'...) that swells in and out
+    organ(t, f, len, v = 1) {
+      const fl = ctx.createBiquadFilter(), gn = ctx.createGain();
+      fl.type = "lowpass"; fl.frequency.value = 2400; fl.connect(gn).connect(bus);
+      env(gn, t, 0.18, 0.035 * v, Math.max(0, len - 0.18), 0.5);
+      [[1, 1], [2, 0.5], [3, 0.25], [4, 0.2], [6, 0.08], [8, 0.05]].forEach(([m, a]) => {
+        const o = ctx.createOscillator(), og = ctx.createGain(); o.frequency.value = f * m; og.gain.value = a;
+        o.connect(og).connect(fl); o.start(t); o.stop(t + len + 0.7);
+      });
+    },
+    // a music-box tine: bright, a little out of tune with itself, quick to fade
+    tine(t, f, v = 1) {
+      NOTES.push({ t, f, len: 0.3 });
+      for (const [m, a, d] of [[1, 0.13, 1.6], [3.01, 0.03, 0.4], [5.8, 0.012, 0.18]]) {
+        const o = ctx.createOscillator(), gn = ctx.createGain();
+        o.frequency.value = f * m * (1 + (Math.random() - 0.5) * 0.002); gn.gain.setValueAtTime(a * v, t); gn.gain.exponentialRampToValueAtTime(0.0004, t + d);
+        o.connect(gn).connect(bus); o.start(t); o.stop(t + d + 0.05);
+      }
+    },
+    // a church bell far away: inharmonic partials that ring for a long time
+    toll(t, f, v = 1) {
+      for (const [m, a, d] of [[0.5, 0.08, 6], [1, 0.1, 4.5], [1.19, 0.05, 3], [1.5, 0.035, 2.5], [2, 0.03, 2], [2.74, 0.02, 1.3]]) {
+        const o = ctx.createOscillator(), gn = ctx.createGain();
+        o.frequency.value = f * m; gn.gain.setValueAtTime(a * v, t); gn.gain.exponentialRampToValueAtTime(0.0003, t + d);
+        o.connect(gn).connect(bus); o.start(t); o.stop(t + d + 0.1);
+      }
+    },
+    timp(t, f, v = 1) {
+      const o = ctx.createOscillator(), gn = ctx.createGain();
+      o.frequency.setValueAtTime(f * 1.06, t); o.frequency.exponentialRampToValueAtTime(f, t + 0.08);
+      gn.gain.setValueAtTime(0.5 * v, t); gn.gain.exponentialRampToValueAtTime(0.001, t + 1.6);
+      o.connect(gn).connect(bus); o.start(t); o.stop(t + 1.7);
+      const s = ctx.createBufferSource(), fl = ctx.createBiquadFilter(), ng = ctx.createGain();
+      s.buffer = noise; fl.type = "lowpass"; fl.frequency.value = 400; ng.gain.setValueAtTime(0.25 * v, t); ng.gain.exponentialRampToValueAtTime(0.001, t + 0.3);
+      s.connect(fl).connect(ng).connect(bus); s.start(t); s.stop(t + 0.35);
+    },
+    // rain on the window: a soft hiss that rises and falls
+    rain(t, len) {
+      const s = ctx.createBufferSource(), fl = ctx.createBiquadFilter(), gn = ctx.createGain();
+      s.buffer = noise; s.loop = true; fl.type = "bandpass"; fl.frequency.value = 2600 + Math.random() * 1200; fl.Q.value = 0.4;
+      env(gn, t, len * 0.4, 0.018, len * 0.2, len * 0.4);
+      s.connect(fl).connect(gn).connect(out); s.start(t, Math.random()); s.stop(t + len + 0.1);
+    }
+  };
+}
+const NN = s => midi(nm(s));
+Object.assign(COMPOSERS, {
+  // Room 4, piece ii: a lament for strings — trembling chords over a bass that sinks step by step, a violin crying above,
+  // and every eight bars a great swell that breaks into a shriek.
+  lament(ctx, out) {
+    const K = minorKit(ctx, out);
+    const bars = [
+      ["C3", "G3 C4 Eb4"], ["B2", "G3 B3 D4 F4"], ["Bb2", "G3 C4 Eb4"], ["A2", "F3 A3 C4 Eb4"],
+      ["Ab2", "F3 Ab3 C4"], ["G2", "G3 B3 D4 F4"], ["Ab2", "Ab3 C4 Eb4"], ["G2", "F3 B3 D4 G4"]
+    ].map(([b, up]) => [NN(b), up.split(" ").map(NN)]);
+    const tunes = [
+      ["G5", "Ab5", "G5", "F5", "Eb5", "D5", "C5", "D5", "Eb5", "F5", "D5", "C5", "B4", "D5", "G5", null],
+      ["C6", "B5", "Bb5", "A5", "Ab5", "G5", "F5", "Eb5", "D5", "Eb5", "F5", "D5", "B4", "C5", "D5", null]
+    ].map(m => m.map(s => (s ? NN(s) : null)));
+    const sixteenth = 60 / 64 / 4;
+    const stopClock = runScheduler(ctx, sixteenth, (i, t) => {
+      const s = i % 16, barN = Math.floor(i / 16), [bass, up] = bars[barN % 8];
+      const swell = Math.pow(Math.sin(((barN % 8) + s / 16) / 8 * Math.PI), 2); // rises over eight bars, then falls
+      const v = 0.35 + swell * 1.1;
+      up.forEach((f, k) => K.bow(t + k * 0.004, f, sixteenth * 0.85, v * 0.55, 0.03)); // tremolo: the bow shakes on every note
+      if (s === 0) { K.bow(t, bass, sixteenth * 15, 1.4 + swell, 0.3); K.bow(t, bass / 2, sixteenth * 15, 0.9, 0.4); K.timp(t, bass > NN("A2") ? NN("C2") : NN("G1"), 0.5 + swell); }
+      if (s === 8 && swell > 0.6) K.timp(t, NN("G1"), swell);
+      if (s % 8 === 0) { const n = tunes[Math.floor(barN / 8) % 2][(barN % 8) * 2 + s / 8]; if (n) K.bow(t, n, sixteenth * 7.6, 1.6 + swell, 0.25); }
+      if (barN % 8 === 4 && s === 0) { [NN("C5"), NN("Db5"), NN("G5"), NN("Ab5"), NN("C6")].forEach(f => K.bow(t, f, sixteenth * 10, 2.2, 0.05)); K.timp(t, NN("C2"), 1.6); } // the shriek
+    });
+    return () => stopClock();
+  },
+  // Room 4, piece iii: an old music box playing a waltz in a dark chapel, an organ breathing underneath,
+  // rain on the glass and a bell tolling far off.
+  nocturne(ctx, out) {
+    const K = minorKit(ctx, out);
+    const chords = ["C3 G3 C4 Eb4", "Ab2 Ab3 C4 Eb4", "F2 F3 Ab3 C4", "G2 G3 B3 D4", "C3 G3 C4 Eb4", "Eb3 G3 Bb3 Eb4", "Ab2 Ab3 C4 F4", "G2 F3 B3 D4"].map(c => c.split(" ").map(NN));
+    const tunes = [
+      [["G5", "Eb5", "C5"], ["C6", "Ab5", "Eb5"], ["F5", "Ab5", "C6"], ["D6", "B5", "G5"], ["Eb6", "D6", "C6"], ["Bb5", "G5", "Eb5"], ["C6", "Ab5", "F5"], ["G5", "F5", "D5"]],
+      [["C5", "D5", "Eb5"], ["Eb5", "C5", "Ab4"], ["Ab5", "G5", "F5"], ["B4", "D5", "F5"], ["G5", "Eb5", "C5"], ["Bb4", "Eb5", "G5"], ["Ab5", "F5", "C5"], ["B4", "C5", null]]
+    ].map(t => t.map(b => b.map(s => (s ? NN(s) : null))));
+    const eighth = 60 / 76 / 2;
+    const stopClock = runScheduler(ctx, eighth, (i, t) => {
+      const e = i % 6, bar = Math.floor(i / 6), ch = chords[bar % 8], tune = tunes[Math.floor(bar / 8) % 2][bar % 8];
+      const late = e === 0 ? 0.03 : 0; // the old spring drags a little at the start of each bar
+      if (e === 0) { K.organ(t, ch[0], eighth * 6, 1); ch.slice(1).forEach(f => K.organ(t, f, eighth * 6, 0.6)); K.rain(t, eighth * 6 + 1.5); }
+      if (e % 2 === 0) { const n = tune[e / 2]; if (n) K.tine(t + late, n, 1); }
+      if (e === 3 || e === 5) K.tine(t, ch[2 + (e === 5 ? 1 : 0)] * 2, 0.35); // little accompanying notes
+      if (e === 1 && bar % 8 === 7) K.tine(t, tune[0] * 2, 0.4);
+      if (e === 0 && bar % 4 === 0) K.toll(t, NN("C3"), 0.9);
+    });
+    return () => stopClock();
+  }
+});
+
+// --- Shared for room 4: fill a shape like a painter would — a light-to-dark gradient, then strokes laid along the form ---
+function paintedFill(pathFn, light, dark, ang, seed, n, len, x1, y1, x2, y2) {
+  pathFn();
+  const gr = g.createLinearGradient(x1, y1, x2, y2); gr.addColorStop(0, `rgb(${light})`); gr.addColorStop(1, `rgb(${dark})`);
+  g.fillStyle = gr; g.fill();
+  if (!n) return;
+  const r = seeded(seed);
+  g.save(); pathFn(); g.clip();
+  const minX = Math.min(x1, x2) - len, maxX = Math.max(x1, x2) + len, minY = Math.min(y1, y2) - len, maxY = Math.max(y1, y2) + len;
+  for (let i = 0; i < n; i++) {
+    const x = minX + r() * (maxX - minX), y = minY + r() * (maxY - minY);
+    const k = Math.max(0, Math.min(1, ((x - x1) * (x2 - x1) + (y - y1) * (y2 - y1)) / (((x2 - x1) ** 2 + (y2 - y1) ** 2) || 1)));
+    g.globalAlpha = 0.5; brush(x, y, len * (0.5 + r()), len * 0.18, ang + (r() - 0.5) * 0.5, paint(mixc(light, dark, k), 22, r));
+  }
+  g.globalAlpha = 1; g.restore();
+}
+// The weave of a canvas showing through thin oil paint, laid over a whole picture.
+function canvasGrain(w, h, seed) {
+  return offscreen(w, h, (fw, fh) => {
+    const r = seeded(seed);
+    for (let y = 0; y < fh; y += 2) { g.fillStyle = `rgba(0,0,0,${0.03 + r() * 0.04})`; g.fillRect(0, y, fw, 0.8); }
+    for (let x = 0; x < fw; x += 2) { g.fillStyle = `rgba(255,255,255,${0.02 + r() * 0.03})`; g.fillRect(x, 0, 0.8, fh); }
+  });
+}
+
+// --- Room 4, piece i: an old blind guitarist hunched over his guitar, painted all in blues ---
+// His left hand slides up and down the neck with the pitch of the scale, his right hand plucks each note.
+const guitarist = { key: "", back: null, grain: null, slide: 0.5, pluck: 0, lastPitch: 0, nod: { x: 0, v: 0 }, strum: 0 };
+const BLUE = { deep: [16, 30, 56], dark: [26, 46, 80], mid: [44, 74, 116], light: [96, 128, 164], pale: [150, 172, 194] };
+const BSKIN = { light: [168, 186, 200], mid: [116, 138, 160], dark: [58, 78, 104] };
+function guitaristBeat() { guitarist.nod.v += 0.4 + S.bass * 0.4; guitarist.strum = 1; }
+function guitaristScene(t, dt, box) {
+  const h = box.h, w = Math.min(box.w, h * 0.66), x0 = box.x + (box.w - w) / 2, y0 = box.y, u = h / 100;
+  const X = v => x0 + v * u, Y = v => y0 + v * u, P = (x, y) => [X(x), Y(y)];
+  const key = Math.round(w) + "x" + Math.round(h) + "@" + DPR;
+  if (guitarist.key !== key) { // the room, his crossed legs and his hunched body are painted once
+    guitarist.key = key;
+    guitarist.grain = canvasGrain(w, h, 61);
+    guitarist.back = offscreen(w, h, () => {
+      const A = v => v * u, r = seeded(62);
+      // the wall: deep blue, with a paler corner of light behind his head
+      const bg = g.createLinearGradient(0, 0, w, h); bg.addColorStop(0, `rgb(${BLUE.mid})`); bg.addColorStop(0.5, `rgb(${BLUE.dark})`); bg.addColorStop(1, `rgb(${BLUE.deep})`);
+      g.fillStyle = bg; g.fillRect(0, 0, w, h);
+      for (let i = 0; i < w * h / 60; i++) { const x = r() * w, y = r() * h, k = (x / w + y / h) / 2; brush(x, y, 8 + r() * 10, 3 + r() * 2, 1.3 + (r() - 0.5) * 0.5, paint(mixc(BLUE.mid, BLUE.deep, k), 9, r)); }
+      g.beginPath(); g.moveTo(0, 0); g.lineTo(A(30), 0); g.lineTo(A(8), A(70)); g.lineTo(0, A(78)); g.closePath();
+      g.save(); g.clip(); g.fillStyle = `rgba(${BLUE.light},0.35)`; g.fillRect(0, 0, A(30), A(78)); for (let i = 0; i < 700; i++) { const x = r() * A(30), y = r() * A(78); g.globalAlpha = 0.45; brush(x, y, 12 + r() * 14, 2.5, 1.4 + (r() - 0.5) * 0.25, paint(mixc(mixc(BLUE.light, BLUE.mid, 0.4), BLUE.mid, y / A(78)), 8, r)); } g.globalAlpha = 1; g.restore();
+      // the floor
+      paintedFill(() => { g.beginPath(); g.rect(0, A(84), w, h - A(84)); }, BLUE.mid, BLUE.deep, 0.05, 63, 500, A(2.5), 0, A(84), 0, h);
+      // the body: a long hunched back under a ragged shirt
+      paintedFill(() => { g.beginPath(); g.moveTo(A(22), A(40)); g.quadraticCurveTo(A(26), A(26), A(36), A(25)); g.bezierCurveTo(A(52), A(26), A(58), A(48), A(55), A(66)); g.quadraticCurveTo(A(54), A(76), A(50), A(82)); g.lineTo(A(18), A(82)); g.quadraticCurveTo(A(16), A(60), A(22), A(40)); g.closePath(); },
+        BLUE.light, BLUE.deep, 1.2, 66, 1300, A(2.6), A(30), A(24), A(56), A(76));
+      g.strokeStyle = `rgba(${BLUE.deep},0.8)`; g.lineCap = "round"; // folds of the shirt
+      for (const [a, c, b] of [[[40, 30], [46, 46], [44, 62]], [[48, 36], [53, 52], [50, 70]], [[30, 30], [34, 42], [30, 54]]]) { g.lineWidth = A(0.6); g.beginPath(); g.moveTo(A(a[0]), A(a[1])); g.quadraticCurveTo(A(c[0]), A(c[1]), A(b[0]), A(b[1])); g.stroke(); }
+      g.strokeStyle = `rgba(${BLUE.pale},0.5)`; g.lineWidth = A(0.5); g.beginPath(); g.moveTo(A(31), A(25.5)); g.bezierCurveTo(A(48), A(25), A(56), A(44), A(55), A(60)); g.stroke(); // light along his back
+      // crossed legs in thin trousers, a bony bare foot in front
+      paintedFill(() => { g.beginPath(); g.moveTo(A(4), A(84)); g.bezierCurveTo(A(10), A(74), A(30), A(76), A(46), A(80)); g.bezierCurveTo(A(58), A(80), A(64), A(86), A(62), A(93)); g.bezierCurveTo(A(46), A(98), A(18), A(98), A(4), A(94)); g.closePath(); },
+        BLUE.light, BLUE.dark, -0.1, 64, 700, A(2.2), A(10), A(76), A(40), A(98));
+      for (const [a, b] of [[[12, 84], [46, 88]], [[20, 92], [56, 90]]]) { g.strokeStyle = `rgba(${BLUE.deep},0.7)`; g.lineWidth = A(0.5); g.beginPath(); g.moveTo(A(a[0]), A(a[1])); g.quadraticCurveTo(A((a[0] + b[0]) / 2), A(a[1] - 2), A(b[0]), A(b[1])); g.stroke(); }
+      paintedFill(() => { g.beginPath(); g.moveTo(A(2), A(90)); g.bezierCurveTo(A(2), A(86), A(8), A(85), A(13), A(87)); g.lineTo(A(15), A(92)); g.bezierCurveTo(A(10), A(95), A(4), A(95), A(2), A(93)); g.closePath(); },
+        BSKIN.light, BSKIN.dark, 0, 65, 120, A(1), A(4), A(86), A(12), A(94));
+      for (let k = 0; k < 4; k++) { g.strokeStyle = `rgb(${BSKIN.dark})`; g.lineWidth = A(0.25); g.beginPath(); g.moveTo(A(3 + k * 0.8), A(90.5)); g.lineTo(A(2.4 + k * 0.8), A(92.5)); g.stroke(); } // toes
+    });
+  }
+  // --- movement ---
+  const pitchK = S.pitchOn ? Math.max(0, Math.min(1, (S.pitch - 0.8) / 2.6)) : guitarist.slide;
+  guitarist.slide += (pitchK - guitarist.slide) * Math.min(1, dt * 6);
+  if (S.pitchOn && Math.abs(S.pitch - guitarist.lastPitch) > 0.05) { guitarist.pluck = 1; guitarist.lastPitch = S.pitch; }
+  guitarist.pluck *= Math.pow(0.02, dt); guitarist.strum *= Math.pow(0.05, dt);
+  spring(guitarist.nod, dt, 5, 2.2);
+  const breathe = Math.sin(t * 0.9) * 0.3;
+
+  g.save(); g.beginPath(); g.rect(x0, y0, w, h); g.clip();
+  blit(guitarist.back, x0, y0);
+  // the guitar: the one warm colour in the picture
+  const gx = 42, gy = 66 + breathe * 0.3, ga = Math.atan2(56 - 66, 2 - 42);
+  const G = (lx, ly) => [gx + Math.cos(ga) * lx - Math.sin(ga) * ly, gy + Math.sin(ga) * lx + Math.cos(ga) * ly]; // guitar space → picture units
+  g.save(); g.translate(X(gx), Y(gy)); g.rotate(ga); g.scale(u, u);
+  const body = () => { g.beginPath(); g.moveTo(-13.5, 0); g.bezierCurveTo(-13.5, -11, 1, -11, 3, -6.5); g.bezierCurveTo(5, -8.2, 15, -8.5, 15.5, 0); g.bezierCurveTo(15, 8.5, 5, 8.2, 3, 6.5); g.bezierCurveTo(1, 11, -13.5, 11, -13.5, 0); g.closePath(); };
+  paintedFill(body, [190, 132, 74], [78, 44, 26], 0, 70, 160, 1.4, -6, -8, 10, 9);
+  g.strokeStyle = "rgb(52,30,20)"; g.lineWidth = 0.35; body(); g.stroke();
+  paintedFill(() => { g.beginPath(); g.rect(14, -1.4, 22, 2.8); }, [120, 80, 48], [60, 36, 22], 0, 71, 30, 1.2, 14, -1.4, 14, 1.4); // neck
+  paintedFill(() => { g.beginPath(); g.moveTo(36, -1.6); g.lineTo(42, -2); g.lineTo(42, 2); g.lineTo(36, 1.6); g.closePath(); }, [96, 62, 38], [50, 30, 20], 0, 72, 10, 0.8, 36, -2, 36, 2);
+  g.beginPath(); g.arc(4.5, 0, 3, 0, TAU); g.fillStyle = "rgb(24,16,14)"; g.fill(); // sound hole
+  g.strokeStyle = "rgba(200,170,120,0.6)"; g.lineWidth = 0.25; g.beginPath(); g.arc(4.5, 0, 3.5, 0, TAU); g.stroke();
+  g.fillStyle = "rgb(40,24,16)"; g.fillRect(-8.6, -2.4, 1.6, 4.8); // bridge
+  for (let f = 0; f < 9; f++) { const fx = 36 - 22 * (1 - Math.pow(0.9, f * 1.8)) * 1.05; g.fillStyle = "rgba(200,190,170,0.6)"; g.fillRect(fx, -1.4, 0.2, 2.8); } // frets
+  for (let s = 0; s < 6; s++) { // strings: each shakes with its own part of the sound
+    const yb = -1.8 + s * 0.72, yn = -1.1 + s * 0.44, amp = (S.spec[2 + s * 2] * 0.5 + guitarist.pluck * 0.25 + guitarist.strum * 0.15) * 0.6;
+    for (const side of [-1, 1]) {
+      g.strokeStyle = `rgba(226,214,190,${amp > 0.05 ? 0.45 : 0.8})`; g.lineWidth = 0.14 + (5 - s) * 0.025;
+      g.beginPath(); g.moveTo(-7.8, yb); g.quadraticCurveTo(14, (yb + yn) / 2 + side * amp, 36, yn); g.stroke();
+    }
+  }
+  g.restore();
+  // a thin, bony hand: a palm and four long fingers, each bent at two knuckles
+  const boneHand = (hx, hy, ang, curls, spread) => {
+    g.save(); g.translate(hx, hy); g.rotate(ang); g.lineCap = "round"; g.lineJoin = "round";
+    g.beginPath(); g.moveTo(-u * 0.4, -u * 0.8); g.quadraticCurveTo(u * 1.2, -u * 1.5, u * 2.4, -u * 1.2); g.lineTo(u * 2.5, u * 1.1); g.quadraticCurveTo(u * 1.2, u * 1.2, -u * 0.4, u * 0.7); g.closePath();
+    const pg = g.createLinearGradient(0, -u * 1.3, 0, u * 1.2); pg.addColorStop(0, `rgb(${mixc(BSKIN.light, BSKIN.mid, 0.4)})`); pg.addColorStop(1, `rgb(${BSKIN.dark})`); g.fillStyle = pg; g.fill();
+    g.strokeStyle = `rgb(${BSKIN.dark})`; g.lineWidth = u * 0.22; g.stroke();
+    for (let f = 0; f < 4; f++) {
+      const c = curls[f], base = [u * 2.3, (f - 1.5) * u * 0.75], a0 = (f - 1.5) * spread;
+      const k1 = [base[0] + Math.cos(a0) * u * 1.7, base[1] + Math.sin(a0) * u * 1.7];
+      const k2 = [k1[0] + Math.cos(a0 + c) * u * 1.3, k1[1] + Math.sin(a0 + c) * u * 1.3];
+      const tip = [k2[0] + Math.cos(a0 + c * 2) * u * 1, k2[1] + Math.sin(a0 + c * 2) * u * 1];
+      for (const [col, wd] of [[BSKIN.dark, 0.95], [BSKIN.mid, 0.65]]) { g.strokeStyle = `rgb(${col})`; g.lineWidth = u * wd; g.beginPath(); g.moveTo(...base); g.lineTo(...k1); g.lineTo(...k2); g.lineTo(...tip); g.stroke(); }
+      g.strokeStyle = `rgba(${BSKIN.light},0.8)`; g.lineWidth = u * 0.18; g.beginPath(); g.moveTo(base[0], base[1] - u * 0.15); g.lineTo(k1[0], k1[1] - u * 0.15); g.stroke(); // light on each finger
+    }
+    g.restore();
+  };
+  const arm = (sh, el, wr, seed) => { // a thin arm: upper arm and forearm meeting at a sharp elbow, a ragged sleeve at the shoulder
+    const S0 = P(...sh), E = P(...el), Wr = P(...wr);
+    const nrm = (a, b) => { const dx = b[0] - a[0], dy = b[1] - a[1], n = Math.hypot(dx, dy) || 1; return [-dy / n, dx / n]; };
+    const n1 = nrm(S0, E), n2 = nrm(E, Wr), nE = [(n1[0] + n2[0]) / 2, (n1[1] + n2[1]) / 2];
+    const lerp = (a, b, k) => [a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k];
+    const M1 = lerp(S0, E, 0.45), M2 = lerp(E, Wr, 0.3);
+    const pts = [[S0, n1, 2.2], [M1, n1, 1.7], [E, nE, 1.25], [M2, n2, 1.4], [Wr, n2, 0.85]];
+    const path = () => { g.beginPath(); pts.forEach(([p, n, wd], i) => (i ? g.lineTo : g.moveTo).call(g, p[0] + n[0] * wd * u, p[1] + n[1] * wd * u)); for (let i = pts.length - 1; i >= 0; i--) { const [p, n, wd] = pts[i]; g.lineTo(p[0] - n[0] * wd * u, p[1] - n[1] * wd * u); } g.closePath(); };
+    paintedFill(path, mixc(BSKIN.light, BSKIN.mid, 0.3), BSKIN.dark, Math.atan2(E[1] - S0[1], E[0] - S0[0]), seed, 60, u, S0[0], S0[1], Wr[0], Wr[1]);
+    g.strokeStyle = `rgb(${BSKIN.dark})`; g.lineWidth = u * 0.25; g.lineJoin = "round"; path(); g.stroke();
+    g.strokeStyle = `rgba(${BSKIN.light},0.85)`; g.lineWidth = u * 0.3; g.beginPath(); g.moveTo(M1[0] + n1[0] * u * 0.9, M1[1] + n1[1] * u * 0.9); g.lineTo(E[0] + nE[0] * u * 0.7, E[1] + nE[1] * u * 0.7); g.lineTo(M2[0] + n2[0] * u * 0.7, M2[1] + n2[1] * u * 0.7); g.stroke(); // light along the bone
+    const sl = lerp(S0, E, 0.4); // the sleeve
+    g.beginPath(); g.moveTo(S0[0] + n1[0] * 3 * u, S0[1] + n1[1] * 3 * u); g.lineTo(sl[0] + n1[0] * 2.2 * u, sl[1] + n1[1] * 2.2 * u);
+    for (let k = 1; k <= 4; k++) { const q = lerp([sl[0] + n1[0] * 2.2 * u, sl[1] + n1[1] * 2.2 * u], [sl[0] - n1[0] * 2.2 * u, sl[1] - n1[1] * 2.2 * u], k / 4), dd = nrm([0, 0], n1); g.lineTo(q[0] + dd[0] * (k % 2 ? 1.2 : -0.3) * u * -1, q[1] + dd[1] * (k % 2 ? 1.2 : -0.3) * u * -1); }
+    g.lineTo(S0[0] - n1[0] * 3 * u, S0[1] - n1[1] * 3 * u); g.closePath();
+    g.fillStyle = `rgb(${mixc(BLUE.mid, BLUE.dark, 0.3)})`; g.fill(); g.strokeStyle = `rgba(${BLUE.deep},0.8)`; g.lineWidth = u * 0.25; g.stroke();
+  };
+  // his left arm reaches round to the neck; the hand slides along it with the pitch
+  const neckP = 0.85 - guitarist.slide * 0.7, hand = G(14 + 22 * neckP, -2.4), el = [13 + breathe * 0.2, 50 + guitarist.slide * 2];
+  arm([25, 38], el, hand, 73);
+  const press = guitarist.pluck * 0.3;
+  boneHand(X(hand[0]), Y(hand[1]), ga + Math.PI / 2 + 0.1, [0.9 + press, 1.1, 1.0 - press, 1.2], 0.12);
+  // his neck, thin and corded, bent far forward
+  paintedFill(() => { g.beginPath(); g.moveTo(X(23), Y(32)); g.quadraticCurveTo(X(26), Y(27), X(31), Y(27)); g.lineTo(X(30), Y(33)); g.quadraticCurveTo(X(27), Y(36), X(24.5), Y(37)); g.closePath(); }, BSKIN.mid, BSKIN.dark, 0.8, 80, 30, u, X(25), Y(28), X(28), Y(36));
+  g.strokeStyle = `rgba(${BSKIN.light},0.7)`; g.lineWidth = u * 0.3; g.beginPath(); g.moveTo(X(24.5), Y(33)); g.quadraticCurveTo(X(27), Y(30), X(30), Y(29)); g.stroke();
+  // his head bowed low over the guitar, eyes shut, a long grey beard
+  const nod = guitarist.nod.x * 0.06 + Math.sin(t * 0.45) * 0.025 + guitarist.pluck * 0.02;
+  g.save(); g.translate(X(21.5), Y(30)); g.rotate(-0.55 + nod); g.scale(u, u); g.lineCap = "round";
+  paintedFill(() => { g.beginPath(); g.ellipse(1.6, -2.6, 4.6, 5.2, 0.1, 0, TAU); }, [120, 140, 162], [40, 56, 82], 1.2, 74, 60, 1, -2, -7, 5, 2); // the back of his skull and hair
+  for (let k = 0; k < 9; k++) { const a = -2.4 + k * 0.28; g.strokeStyle = k % 3 ? `rgb(${BLUE.light})` : `rgb(${BLUE.pale})`; g.lineWidth = 0.25; g.beginPath(); g.moveTo(1.6 + Math.cos(a) * 3.6, -2.6 + Math.sin(a) * 4.2); g.quadraticCurveTo(1.6 + Math.cos(a) * 5.2, -2.6 + Math.sin(a) * 5.4, 1.6 + Math.cos(a + 0.25) * 5.4, -2.2 + Math.sin(a + 0.25) * 5.4); g.stroke(); }
+  // a long, gaunt face, lit from the upper left
+  const face = () => { g.beginPath(); g.moveTo(-3.2, -4.6); g.quadraticCurveTo(0, -6.4, 3.4, -4.4); g.quadraticCurveTo(3.8, -0.5, 2.8, 2.6); g.quadraticCurveTo(1.6, 6.2, -0.2, 6.6); g.quadraticCurveTo(-2.2, 6.2, -2.8, 3); g.quadraticCurveTo(-2.4, 1, -3.4, -0.6); g.quadraticCurveTo(-3.8, -2.8, -3.2, -4.6); g.closePath(); };
+  paintedFill(face, BSKIN.light, BSKIN.dark, 1.4, 75, 70, 0.7, -3, -5, 3.5, 5);
+  g.save(); face(); g.clip();
+  g.fillStyle = `rgba(${BSKIN.dark},0.55)`; for (const ex of [-1.5, 1.7]) { g.beginPath(); g.ellipse(ex, -1.5, 1.4, 0.9, 0, 0, TAU); g.fill(); } // sunken eye sockets
+  g.beginPath(); g.ellipse(-2.4, 2, 0.9, 1.8, 0.2, 0, TAU); g.fill(); g.beginPath(); g.ellipse(2.4, 2, 0.7, 1.6, -0.2, 0, TAU); g.fill(); // hollow cheeks
+  g.fillStyle = `rgba(${BSKIN.light},0.7)`; g.beginPath(); g.ellipse(-2.3, 0.2, 0.8, 0.35, -0.3, 0, TAU); g.fill(); // light on the cheekbone
+  g.restore();
+  g.strokeStyle = `rgb(${BLUE.deep})`;
+  g.lineWidth = 0.28; for (const ex of [-1.5, 1.7]) { g.beginPath(); g.moveTo(ex - 1, -1.5); g.quadraticCurveTo(ex, -1, ex + 0.9, -1.4); g.stroke(); } // closed lids
+  g.lineWidth = 0.16; for (const ex of [-1.5, 1.7]) { g.beginPath(); g.moveTo(ex - 0.7, -0.9); g.quadraticCurveTo(ex, -0.5, ex + 0.6, -0.8); g.stroke(); }
+  g.lineWidth = 0.3; g.beginPath(); g.moveTo(-2.6, -2.7); g.quadraticCurveTo(-1.5, -3.1, -0.4, -2.5); g.moveTo(0.6, -2.5); g.quadraticCurveTo(1.8, -3.1, 2.8, -2.6); g.stroke(); // brows
+  g.lineWidth = 0.26; g.beginPath(); g.moveTo(0, -2.3); g.lineTo(-0.1, 1.6); g.quadraticCurveTo(0.4, 2.3, 1, 1.8); g.stroke(); // long nose
+  g.strokeStyle = `rgba(${BSKIN.light},0.9)`; g.lineWidth = 0.22; g.beginPath(); g.moveTo(-0.4, -1.8); g.lineTo(-0.5, 1.2); g.stroke();
+  // beard and moustache: long grey strands falling forward
+  paintedFill(() => { g.beginPath(); g.moveTo(-2.8, 2.6); g.quadraticCurveTo(0, 3.6, 2.8, 2.4); g.quadraticCurveTo(2.6, 7.5, 0.4, 13 + breathe * 0.3); g.quadraticCurveTo(-1.8, 8, -2.8, 2.6); g.closePath(); }, [150, 166, 186], [62, 78, 104], 1.6, 76, 60, 1, 0, 3, 0, 13);
+  for (let k = 0; k < 12; k++) { const sx = -2.2 + k * 0.4; g.strokeStyle = k % 2 ? `rgba(${BLUE.pale},0.7)` : `rgba(${BLUE.dark},0.6)`; g.lineWidth = 0.15; g.beginPath(); g.moveTo(sx, 3); g.quadraticCurveTo(sx * 0.6, 7, sx * 0.25 + 0.4, 11 + (k % 3)); g.stroke(); }
+  g.strokeStyle = `rgb(${BLUE.deep})`; g.lineWidth = 0.22; g.beginPath(); g.moveTo(-1.2, 3.4); g.quadraticCurveTo(0, 3.2, 1.2, 3.3); g.stroke(); // mouth, half hidden
+  g.beginPath(); g.ellipse(3.6, -1, 0.6, 1.2, 0.1, 0, TAU); g.fillStyle = `rgb(${BSKIN.mid})`; g.fill(); g.strokeStyle = `rgb(${BSKIN.dark})`; g.lineWidth = 0.15; g.stroke(); // ear
+  g.restore();
+  // his right arm, elbow sharp against the dark, the hand over the sound hole
+  const pick = G(5 + guitarist.pluck * 0.6, 5), rel = [55 + breathe * 0.3, 49];
+  arm([45, 32], rel, pick, 77);
+  boneHand(X(pick[0]), Y(pick[1]), ga + Math.PI * 0.85, [0.7, 0.6 - guitarist.pluck * 0.5, 0.8 - guitarist.strum * 0.4, 0.9], 0.15);
+  g.globalCompositeOperation = "multiply"; blit(guitarist.grain, x0, y0); g.globalCompositeOperation = "source-over";
+  g.restore();
+}
+
+// --- Room 4, piece ii: after Munch — a blood-red sky and a dark fjord swirl in waves, a figure on the bridge screams ---
+const scream = { key: "", deck: null, grain: null, swell: 0, phase: 0, mouth: 0 };
+const SKY = [[232, 120, 40], [214, 70, 42], [244, 168, 62], [196, 56, 44], [238, 196, 92], [222, 96, 50], [168, 60, 56]];
+const FJORD = [[34, 58, 108], [52, 84, 140], [26, 44, 82], [70, 104, 150], [46, 92, 96], [30, 64, 70], [86, 70, 110]];
+function screamBeat() { scream.mouth = Math.min(1, scream.mouth + 0.3 + S.bass * 0.4); }
+function screamScene(t, dt, box) {
+  const h = box.h, w = Math.min(box.w, h * 0.8), x0 = box.x + (box.w - w) / 2, y0 = box.y, u = h / 100, W8 = w / u;
+  const X = v => x0 + v * u, Y = v => y0 + v * u;
+  const rail = x => 84 - (x / W8) * 38; // the bridge railing climbs from the lower right to the left
+  const key = Math.round(w) + "x" + Math.round(h) + "@" + DPR;
+  if (scream.key !== key) {
+    scream.key = key;
+    scream.grain = canvasGrain(w, h, 81);
+    scream.deck = offscreen(w, h, () => { // the bridge deck and railing, in long raking strokes
+      const A = v => v * u, r = seeded(82);
+      g.beginPath(); g.moveTo(0, A(rail(0))); g.lineTo(w, A(rail(W8))); g.lineTo(w, h); g.lineTo(0, h); g.closePath();
+      const dg = g.createLinearGradient(0, A(46), A(30), h); dg.addColorStop(0, "rgb(170,104,58)"); dg.addColorStop(1, "rgb(96,56,36)"); g.fillStyle = dg; g.fill();
+      g.save(); g.clip(); const ang = Math.atan2(-38, W8);
+      for (let i = 0; i < w * h / 120; i++) { const x = r() * w, y = r() * h; g.globalAlpha = 0.6; brush(x, y, A(4 + r() * 5), A(0.45), ang, paint(r() < 0.5 ? [178, 110, 60] : [134, 80, 48], 14, r)); } g.globalAlpha = 1;
+      for (let i = 0; i < 70; i++) { const x = r() * w, y = r() * h; brush(x, y, A(3 + r() * 3), A(0.3), ang, paint([220, 160, 90], 20, r)); }
+      g.restore();
+      g.lineCap = "round";
+      for (const [off, col, wd] of [[0, "rgb(120,52,30)", 1.4], [-2.6, "rgb(150,66,34)", 0.9], [-5.4, "rgb(132,58,32)", 1.1]]) { g.strokeStyle = col; g.lineWidth = A(wd); g.beginPath(); g.moveTo(0, A(rail(0) + off)); g.lineTo(w, A(rail(W8) + off)); g.stroke(); }
+      for (let x = 2; x < W8; x += 7) { g.strokeStyle = "rgb(110,48,28)"; g.lineWidth = A(0.6); g.beginPath(); g.moveTo(A(x), A(rail(x) - 5.4)); g.lineTo(A(x), A(rail(x))); g.stroke(); }
+      for (const [fx, fh] of [[6, 13], [11, 12]]) { // two dark figures walking away at the far end
+        g.beginPath(); g.moveTo(A(fx - 1.4), A(rail(fx) + 2)); g.lineTo(A(fx - 1), A(rail(fx) - fh + 3)); g.quadraticCurveTo(A(fx), A(rail(fx) - fh), A(fx + 1), A(rail(fx) - fh + 3)); g.lineTo(A(fx + 1.4), A(rail(fx) + 2)); g.closePath(); g.fillStyle = "rgb(30,26,34)"; g.fill();
+        g.fillRect(A(fx - 1.3), A(rail(fx) - fh + 0.4), A(2.6), A(0.6)); // hat brim
+      }
+    });
+  }
+  scream.swell += (Math.min(1, S.bass * 1.2 + S.mid * 0.5) - scream.swell) * Math.min(1, dt * 2);
+  scream.phase += dt * (0.5 + S.mid * 1.2 + scream.swell * 0.6);
+  scream.mouth *= Math.pow(0.25, dt);
+  const ph = scream.phase, sw = scream.swell;
+  g.save(); g.beginPath(); g.rect(x0, y0, w, h); g.clip();
+  g.lineCap = "round"; g.lineJoin = "round";
+  // the sky: bands of red, orange and yellow that roll like waves
+  g.fillStyle = "rgb(214,96,46)"; g.fillRect(x0, y0, w, Y(46) - y0);
+  for (let b = 0; b < 44; b++) {
+    const base = b * 1.05 - 1, col = SKY[(b * 3) % SKY.length];
+    g.strokeStyle = `rgb(${col})`; g.lineWidth = u * (1.4 + (b % 3) * 0.4);
+    g.beginPath();
+    for (let x = -2; x <= W8 + 2; x += 2) { const y = base + Math.sin(x * 0.07 + b * 0.45 - ph) * (1.4 + sw * 1.6) + Math.sin(x * 0.19 - b * 0.3 + ph * 0.6) * 0.6; x === -2 ? g.moveTo(X(x), Y(y)) : g.lineTo(X(x), Y(y)); }
+    g.stroke();
+  }
+  // the fjord and the dark shore, beyond the railing, swirling the other way
+  g.save(); g.beginPath(); g.moveTo(x0, Y(38)); g.lineTo(x0 + w, Y(38)); g.lineTo(x0 + w, Y(rail(W8))); g.lineTo(x0, Y(rail(0))); g.closePath(); g.clip();
+  g.fillStyle = "rgb(40,64,110)"; g.fillRect(x0, Y(38), w, h);
+  for (let b = 0; b < 34; b++) {
+    const base = 38 + b * 1.4, shore = b > 8 && b < 20, col = shore ? FJORD[4 + (b % 3)] : FJORD[b % 4];
+    g.strokeStyle = `rgb(${col})`; g.lineWidth = u * (1.6 + (b % 2) * 0.6);
+    g.beginPath();
+    for (let x = -2; x <= W8 + 2; x += 2) {
+      const curl = shore ? Math.sin((x / W8) * Math.PI) * 9 : 0; // the shore bulges out into the water in a great curve
+      const y = base - curl + Math.sin(x * 0.09 - b * 0.35 + ph * 0.8) * (1 + sw * 1.4);
+      x === -2 ? g.moveTo(X(x), Y(y)) : g.lineTo(X(x), Y(y));
+    }
+    g.stroke();
+  }
+  g.restore();
+  blit(scream.deck, x0, y0);
+  // the screaming figure: a skull-pale face, hands pressed to it, a dark body that bends with the waves
+  const fx = W8 * 0.42, wave = y => Math.sin(y * 0.11 - ph * 1.3) * (1.6 + sw * 2.2);
+  g.beginPath();
+  for (let y = 70; y <= 102; y += 2) g.lineTo(X(fx - 5 - (y - 70) * 0.12 + wave(y)), Y(y));
+  for (let y = 102; y >= 70; y -= 2) g.lineTo(X(fx + 5 + (y - 70) * 0.1 + wave(y)), Y(y));
+  g.closePath();
+  const bg2 = g.createLinearGradient(X(fx - 6), 0, X(fx + 8), 0); bg2.addColorStop(0, "rgb(26,30,46)"); bg2.addColorStop(1, "rgb(52,58,82)"); g.fillStyle = bg2; g.fill();
+  g.strokeStyle = "rgba(90,96,130,0.6)"; g.lineWidth = u * 0.6; // brush ridges along the robe
+  for (let k = -1; k <= 1; k++) { g.beginPath(); for (let y = 72; y <= 100; y += 2) g.lineTo(X(fx + k * 2.4 + wave(y) + (y - 70) * 0.02 * k), Y(y)); g.stroke(); }
+  const hx = fx + wave(62), hy = 62, open = 0.4 + scream.mouth * 0.6 + sw * 0.3;
+  // arms bending up to the face
+  for (const s of [-1, 1]) {
+    g.strokeStyle = "rgb(30,34,50)"; g.lineWidth = u * 3; g.beginPath(); g.moveTo(X(fx + s * 4 + wave(74)), Y(74)); g.quadraticCurveTo(X(hx + s * 9), Y(70), X(hx + s * 5.6), Y(hy + 2)); g.stroke();
+  }
+  // the head: a long pale skull, hollow eyes, the mouth an open oval
+  g.save(); g.translate(X(hx), Y(hy)); g.rotate(wave(55) * 0.02); g.scale(u * 0.8, u * 0.8);
+  g.beginPath(); g.moveTo(0, -9); g.bezierCurveTo(6, -9, 6.4, -1, 4.2, 4); g.quadraticCurveTo(2.4, 9.5, 0, 9.5); g.quadraticCurveTo(-2.4, 9.5, -4.2, 4); g.bezierCurveTo(-6.4, -1, -6, -9, 0, -9); g.closePath();
+  const fg = g.createLinearGradient(-5, -9, 5, 9); fg.addColorStop(0, "rgb(232,210,150)"); fg.addColorStop(0.6, "rgb(196,178,120)"); fg.addColorStop(1, "rgb(130,128,96)"); g.fillStyle = fg; g.fill();
+  g.strokeStyle = "rgba(110,100,70,0.7)"; g.lineWidth = 0.3; g.stroke();
+  for (const s of [-1, 1]) { g.beginPath(); g.ellipse(s * 2, -1.6, 1.3, 1.8 + open * 0.3, s * 0.15, 0, TAU); g.fillStyle = "rgb(96,90,70)"; g.fill(); g.beginPath(); g.arc(s * 2, -1.2, 0.4, 0, TAU); g.fillStyle = "rgb(30,28,30)"; g.fill(); }
+  g.fillStyle = "rgb(90,80,60)"; for (const s of [-1, 1]) { g.beginPath(); g.ellipse(s * 0.5, 1.6, 0.3, 0.5, 0, 0, TAU); g.fill(); }
+  g.beginPath(); g.ellipse(0, 5, 1.3 + open * 0.3, 1 + open * 1.6, 0, 0, TAU); g.fillStyle = "rgb(40,30,30)"; g.fill();
+  // hands clasped over the ears
+  for (const s of [-1, 1]) {
+    g.beginPath(); g.moveTo(s * 4.4, -3); g.quadraticCurveTo(s * 6.6, -1, s * 6, 3.5); g.quadraticCurveTo(s * 5, 6, s * 3.6, 5.4); g.quadraticCurveTo(s * 4.4, 1, s * 4.4, -3); g.closePath();
+    g.fillStyle = "rgb(210,190,132)"; g.fill(); g.strokeStyle = "rgba(110,100,70,0.8)"; g.lineWidth = 0.25; g.stroke();
+    for (let f = 0; f < 3; f++) { g.beginPath(); g.moveTo(s * (4.6 + f * 0.4), -2 + f * 0.6); g.lineTo(s * (4.1 + f * 0.3), -4.4 + f * 0.7); g.stroke(); }
+  }
+  g.restore();
+  g.globalCompositeOperation = "multiply"; blit(scream.grain, x0, y0); g.globalCompositeOperation = "source-over";
+  g.restore();
+}
+
+// --- Room 4, piece iii: a gothic window at night — rain on the stained glass, a candle, an old music box turning ---
+const chapel = { key: "", wall: null, rose: null, panes: [], drops: [], lastNote: 0, spin: 0, grain: null };
+const GLASS = [[150, 22, 40], [34, 56, 140], [24, 110, 76], [196, 136, 34], [92, 42, 120], [170, 40, 60], [40, 90, 150]];
+function lancet(a, b, s, e) { // a pointed arch: two arcs that meet at the top
+  const wd = b - a; g.moveTo(a, e); g.lineTo(a, s); g.arc(b, s, wd, Math.PI, Math.PI * 4 / 3); g.arc(a, s, wd, -Math.PI / 3, 0); g.lineTo(b, e); g.closePath();
+}
+function chapelScene(t, dt, box) {
+  const h = box.h, w = Math.min(box.w, h * 0.62), x0 = box.x + (box.w - w) / 2, y0 = box.y, u = h / 100;
+  const X = v => x0 + v * u, Y = v => y0 + v * u;
+  const L = [[15, 30], [32, 47]], SPRING = 40, SILL = 74, RC = [31, 23], RR = 6.2;
+  const key = Math.round(w) + "x" + Math.round(h) + "@" + DPR;
+  if (chapel.key !== key) {
+    chapel.key = key;
+    chapel.grain = canvasGrain(w, h, 91);
+    const A = v => v * u;
+    chapel.wall = offscreen(w, h, () => { // dark stone wall with the window cut through it, its tracery, and the sill
+      const r = seeded(92);
+      g.beginPath(); g.rect(0, 0, w, h);
+      lancet(A(L[0][0]), A(L[0][1]), A(SPRING), A(SILL)); lancet(A(L[1][0]), A(L[1][1]), A(SPRING), A(SILL)); g.moveTo(A(RC[0] + RR), A(RC[1])); g.arc(A(RC[0]), A(RC[1]), A(RR), 0, TAU);
+      g.save(); g.clip("evenodd");
+      g.fillStyle = "rgb(40,36,38)"; g.fillRect(0, 0, w, h);
+      for (let row = 0; row * 4.2 < 100; row++) for (let c = -(row % 2) * 4; c < 62; c += 8) { // stone blocks
+        const v = 0.8 + r() * 0.4; g.fillStyle = `rgb(${mixc([62, 56, 56], [0, 0, 0], 1 - v)})`; g.fillRect(A(c) + 1, A(row * 4.2) + 1, A(8) - 2, A(4.2) - 2);
+        for (let k = 0; k < 5; k++) brush(A(c + r() * 8), A(row * 4.2 + r() * 4.2), A(1.2), A(0.25), (r() - 0.5) * 0.4, `rgba(${r() < 0.5 ? "120,110,104" : "20,18,20"},0.5)`);
+      }
+      // the deep splayed jamb around the window, lit faintly from outside
+      g.beginPath(); lancet(A(11), A(51), A(SPRING - 2), A(SILL)); const jg = g.createLinearGradient(A(11), 0, A(51), 0);
+      jg.addColorStop(0, "rgb(88,86,96)"); jg.addColorStop(0.15, "rgb(60,58,66)"); jg.addColorStop(0.85, "rgb(56,54,62)"); jg.addColorStop(1, "rgb(84,82,92)"); g.fillStyle = jg; g.fill();
+      g.save(); g.beginPath(); lancet(A(11), A(51), A(SPRING - 2), A(SILL)); g.clip(); for (let i = 0; i < 600; i++) brush(A(11 + r() * 40), A(10 + r() * 64), A(1 + r() * 1.5), A(0.3), (r() - 0.5) * 0.6, paint([74, 72, 82], 20, r)); g.restore();
+      g.strokeStyle = "rgb(30,28,32)"; g.lineWidth = A(0.4); g.beginPath(); lancet(A(11), A(51), A(SPRING - 2), A(SILL)); g.stroke();
+      g.restore();
+      // the stone frame of the glass: a thin moulding around each opening
+      g.strokeStyle = "rgb(104,100,108)"; g.lineWidth = A(0.8);
+      g.beginPath(); lancet(A(L[0][0]), A(L[0][1]), A(SPRING), A(SILL)); g.stroke(); g.beginPath(); lancet(A(L[1][0]), A(L[1][1]), A(SPRING), A(SILL)); g.stroke();
+      g.beginPath(); g.arc(A(RC[0]), A(RC[1]), A(RR), 0, TAU); g.stroke();
+      // the sill: a deep stone ledge
+      paintedFill(() => { g.beginPath(); g.moveTo(A(6), A(SILL)); g.lineTo(A(56), A(SILL)); g.lineTo(A(60), A(SILL + 5)); g.lineTo(A(2), A(SILL + 5)); g.closePath(); }, [120, 112, 108], [60, 56, 56], 0, 93, 300, A(2), 0, A(SILL), 0, A(SILL + 5));
+      paintedFill(() => { g.beginPath(); g.rect(A(2), A(SILL + 5), A(58), A(2)); }, [50, 46, 46], [28, 26, 28], 0, 94, 60, A(2), 0, A(SILL + 5), 0, A(SILL + 7));
+      // a dried rose left on the sill
+      g.strokeStyle = "rgb(60,70,40)"; g.lineWidth = A(0.35); g.beginPath(); g.moveTo(A(23), A(SILL + 2.4)); g.quadraticCurveTo(A(28), A(SILL + 1.6), A(33), A(SILL + 2.6)); g.stroke();
+      paintBloom(A(22.4), A(SILL + 1.8), A(1.6), [110, 20, 34], [170, 60, 70], 95);
+      paintLeaf(A(27), A(SILL + 1.6), A(1), 1.9, 96);
+    });
+    // the stained glass: diamond quarries in each light, coloured down the middle, pale grisaille at the sides
+    const r = seeded(97), cs = 3.2; chapel.panes = [];
+    for (const [a, b] of L) {
+      const mid = (a + b) / 2;
+      for (let j = 0; j * cs * 0.5 < SILL; j++) for (let i = -1; i * cs < b - a + cs; i++) {
+        const cx = a + i * cs + (j % 2) * cs * 0.5, cy = 8 + j * cs * 0.5;
+        if (cy > SILL + 2) continue;
+        const centre = Math.abs(cx - mid) < 3.5, edge = Math.abs(cx - mid) > (b - a) / 2 - 1.8;
+        const col = centre ? [GLASS[0], GLASS[1], GLASS[0], GLASS[3]][(j >> 1) % 4] : edge ? GLASS[(j >> 2) % 2 ? 0 : 1] : mixc([150, 166, 156], [116, 140, 132], r());
+        chapel.panes.push({ x: cx, y: cy, col, base: centre || edge ? 0.78 : 0.42, glow: 0 });
+      }
+    }
+    chapel.rose = { petals: [0, 1, 2, 3, 4, 5, 6, 7].map(k => ({ a: k * TAU / 8, col: GLASS[k % 2 ? 0 : 1], glow: 0 })) };
+    chapel.drops = [];
+  }
+  // music box notes light the glass: higher notes light panes higher up
+  const now = ctx ? ctx.currentTime : 0;
+  while (NOTES.length && NOTES[0].t + 2 < now) NOTES.shift();
+  NOTES.forEach(n => {
+    if (n.t <= now && n.t > chapel.lastNote) {
+      chapel.lastNote = n.t;
+      const k = Math.max(0, Math.min(1, Math.log2(n.f / 260) / 2.2)), row = SILL - k * (SILL - 12);
+      chapel.panes.forEach(p => { if (p.base > 0.6 && Math.abs(p.y - row) < 4) p.glow = 1; });
+      chapel.rose.petals[Math.floor(Math.random() * 8)].glow = 1;
+    }
+  });
+  chapel.spin += dt * (1.4 + S.mid * 1.5);
+  g.save(); g.beginPath(); g.rect(x0, y0, w, h); g.clip();
+  // outside: a stormy night, the moon behind cloud, and rain
+  const openings = () => { g.beginPath(); lancet(X(L[0][0]), X(L[0][1]), Y(SPRING), Y(SILL)); lancet(X(L[1][0]), X(L[1][1]), Y(SPRING), Y(SILL)); g.moveTo(X(RC[0] + RR), Y(RC[1])); g.arc(X(RC[0]), Y(RC[1]), RR * u, 0, TAU); };
+  g.save(); openings(); g.clip();
+  const sky = g.createLinearGradient(0, Y(10), 0, Y(SILL)); sky.addColorStop(0, "rgb(22,30,52)"); sky.addColorStop(1, "rgb(52,62,84)"); g.fillStyle = sky; g.fillRect(X(14), Y(10), 34 * u, (SILL - 10) * u);
+  g.beginPath(); g.arc(X(22), Y(30), 4 * u, 0, TAU); g.fillStyle = "rgb(214,214,200)"; g.fill();
+  g.strokeStyle = "rgba(170,180,200,0.35)"; g.lineWidth = 1;
+  for (let k = 0; k < 40; k++) { const rx = (k * 37.3) % 34 + 14, ry = ((t * 60 + k * 53) % 70) + 8; g.beginPath(); g.moveTo(X(rx), Y(ry)); g.lineTo(X(rx - 0.6), Y(ry + 4)); g.stroke(); }
+  // the glass quarries, glowing when a note sounds
+  const cs = 3.2, half = cs * 0.5 * u;
+  chapel.panes.forEach(p => {
+    p.glow *= Math.pow(0.15, dt);
+    const lit = Math.min(1, p.base + p.glow * 0.4 + S.high * 0.3), c = mixc(p.col, [255, 240, 210], p.glow * 0.35);
+    g.beginPath(); g.moveTo(X(p.x), Y(p.y) - half); g.lineTo(X(p.x) + half, Y(p.y)); g.lineTo(X(p.x), Y(p.y) + half); g.lineTo(X(p.x) - half, Y(p.y)); g.closePath();
+    g.fillStyle = `rgba(${c.map(Math.round)},${lit})`; g.fill();
+    g.strokeStyle = "rgb(20,18,22)"; g.lineWidth = Math.max(1, u * 0.28); g.stroke();
+  });
+  // the rose window: eight petals round a centre
+  chapel.rose.petals.forEach(p => {
+    p.glow *= Math.pow(0.2, dt);
+    g.save(); g.translate(X(RC[0]), Y(RC[1])); g.rotate(p.a);
+    g.beginPath(); g.ellipse(RR * u * 0.55, 0, RR * u * 0.42, RR * u * 0.2, 0, 0, TAU);
+    const c = mixc(p.col, [255, 236, 200], p.glow * 0.4); g.fillStyle = `rgba(${c.map(Math.round)},${0.8 + p.glow * 0.2})`; g.fill(); g.strokeStyle = "rgb(20,18,22)"; g.lineWidth = u * 0.3; g.stroke();
+    g.restore();
+  });
+  g.beginPath(); g.arc(X(RC[0]), Y(RC[1]), RR * u * 0.16, 0, TAU); g.fillStyle = "rgb(196,136,34)"; g.fill();
+  // raindrops on the glass: they cling, then slip down in jerks, leaving a wet trail
+  if (chapel.drops.length < 34 && Math.random() < dt * (3 + S.mid * 8)) chapel.drops.push({ x: 15 + Math.random() * 32, y: 10 + Math.random() * 30, v: 0, s: 0.35 + Math.random() * 0.45, trail: 0 });
+  chapel.drops = chapel.drops.filter(d => d.y < SILL + 1);
+  chapel.drops.forEach(d => {
+    d.v = Math.random() < dt * 1.5 ? 4 + Math.random() * 10 : d.v * Math.pow(0.1, dt);
+    d.y += d.v * dt; d.trail = Math.min(6, d.trail + d.v * dt);
+    if (d.trail > 0.3) { g.strokeStyle = "rgba(200,210,230,0.25)"; g.lineWidth = d.s * u * 0.6; g.beginPath(); g.moveTo(X(d.x), Y(d.y - d.trail)); g.lineTo(X(d.x), Y(d.y)); g.stroke(); }
+    g.beginPath(); g.ellipse(X(d.x), Y(d.y), d.s * u * 0.7, d.s * u, 0, 0, TAU); g.fillStyle = "rgba(30,34,50,0.55)"; g.fill();
+    g.beginPath(); g.ellipse(X(d.x - d.s * 0.2), Y(d.y - d.s * 0.3), d.s * u * 0.25, d.s * u * 0.35, 0, 0, TAU); g.fillStyle = "rgba(240,244,255,0.85)"; g.fill();
+  });
+  g.restore();
+  blit(chapel.wall, x0, y0);
+  // the candle and its light on the stone
+  const fl = 1 + Math.sin(t * 13) * 0.05 + Math.sin(t * 7.3) * 0.06 + S.bass * 0.15, lean = Math.sin(t * 1.7) * 0.12 + Math.sin(t * 5.1) * 0.05;
+  const cx = X(12), top = Y(SILL - 9);
+  g.globalCompositeOperation = "lighter";
+  const glow = g.createRadialGradient(cx, top, 0, cx, top, 22 * u * fl); glow.addColorStop(0, "rgba(255,170,80,0.32)"); glow.addColorStop(0.5, "rgba(200,110,50,0.1)"); glow.addColorStop(1, "rgba(120,60,30,0)");
+  g.fillStyle = glow; g.fillRect(x0, y0, w, h);
+  g.globalCompositeOperation = "source-over";
+  paintedFill(() => { g.beginPath(); g.ellipse(cx, Y(SILL + 0.6), 3.4 * u, 1 * u, 0, 0, TAU); }, [214, 170, 90], [110, 74, 30], 0, 98, 20, u, cx - 3 * u, Y(SILL), cx + 3 * u, Y(SILL + 1)); // brass dish
+  paintedFill(() => { g.beginPath(); g.rect(cx - 1.2 * u, top, 2.4 * u, Y(SILL) - top); }, [244, 232, 200], [168, 150, 120], 1.57, 99, 30, u * 0.8, cx - 1.2 * u, 0, cx + 1.2 * u, 0);
+  g.beginPath(); g.moveTo(cx + 1.2 * u, top + u); g.quadraticCurveTo(cx + 1.6 * u, top + 3 * u, cx + 1.2 * u, top + 4 * u); g.lineWidth = u * 0.5; g.strokeStyle = "rgb(236,222,190)"; g.stroke(); // a drip of wax
+  g.strokeStyle = "rgb(30,24,20)"; g.lineWidth = u * 0.2; g.beginPath(); g.moveTo(cx, top); g.lineTo(cx, top - 0.8 * u); g.stroke();
+  g.save(); g.translate(cx, top - 0.6 * u); g.rotate(lean);
+  for (const [s, c] of [[1, "rgb(255,176,60)"], [0.62, "rgb(255,236,170)"], [0.3, "rgb(255,255,240)"]]) {
+    const fh = 4.2 * u * fl * s, fw = 1 * u * s;
+    g.beginPath(); g.moveTo(0, -fh); g.bezierCurveTo(fw * 1.4, -fh * 0.4, fw * 1.2, fh * 0.15, 0, fh * 0.15); g.bezierCurveTo(-fw * 1.2, fh * 0.15, -fw * 1.4, -fh * 0.4, 0, -fh); g.fillStyle = c; g.fill();
+  }
+  g.restore();
+  // the music box: an old wooden box, lid open, a tiny dancer turning on top
+  const bx = X(42), by = Y(SILL);
+  paintedFill(() => { g.beginPath(); g.moveTo(bx - 4.6 * u, by); g.lineTo(bx + 4.6 * u, by); g.lineTo(bx + 4.2 * u, by - 3.6 * u); g.lineTo(bx - 4.2 * u, by - 3.6 * u); g.closePath(); }, [130, 76, 44], [56, 30, 20], 0, 100, 60, u, bx - 4 * u, by - 4 * u, bx + 4 * u, by);
+  g.strokeStyle = "rgb(200,160,80)"; g.lineWidth = u * 0.25; g.strokeRect(bx - 3.4 * u, by - 2.8 * u, 6.8 * u, 2 * u);
+  paintedFill(() => { g.beginPath(); g.moveTo(bx - 4.2 * u, by - 3.6 * u); g.lineTo(bx + 4.2 * u, by - 3.6 * u); g.lineTo(bx + 4.8 * u, by - 9.4 * u); g.lineTo(bx - 3.6 * u, by - 9.4 * u); g.closePath(); }, [110, 62, 36], [50, 28, 18], 0, 101, 40, u, bx, by - 9 * u, bx, by - 4 * u); // open lid
+  g.beginPath(); g.moveTo(bx - 3.4 * u, by - 4.2 * u); g.lineTo(bx + 3.4 * u, by - 4.2 * u); g.lineTo(bx + 3.9 * u, by - 8.8 * u); g.lineTo(bx - 2.9 * u, by - 8.8 * u); g.closePath();
+  const mg = g.createLinearGradient(bx - 3 * u, by - 9 * u, bx + 3 * u, by - 4 * u); mg.addColorStop(0, "rgb(150,160,180)"); mg.addColorStop(0.5, "rgb(70,76,96)"); mg.addColorStop(1, "rgb(130,136,156)"); g.fillStyle = mg; g.fill(); // its little mirror
+  const turn = Math.cos(chapel.spin), dx = bx, dy = by - 3.6 * u;
+  g.save(); g.translate(dx, dy); g.scale(0.35 + Math.abs(turn) * 0.65, 1);
+  g.fillStyle = "rgb(200,170,90)"; g.fillRect(-0.15 * u, -1 * u, 0.3 * u, 1 * u); // the post
+  g.beginPath(); g.ellipse(0, -2.4 * u, 1.6 * u, 0.45 * u, 0, 0, TAU); g.fillStyle = "rgb(240,226,226)"; g.fill(); // tutu
+  g.strokeStyle = "rgb(236,206,190)"; g.lineWidth = u * 0.25; g.beginPath(); g.moveTo(0, -1 * u); g.lineTo(0, -2.4 * u); g.stroke();
+  g.beginPath(); g.ellipse(0, -3.3 * u, 0.4 * u, 0.9 * u, 0, 0, TAU); g.fillStyle = "rgb(236,206,206)"; g.fill(); // body
+  g.beginPath(); g.moveTo(-0.3 * u, -3.9 * u); g.quadraticCurveTo(-1.2 * turn * u, -5.4 * u, 0, -5.6 * u); g.quadraticCurveTo(1.2 * turn * u, -5.4 * u, 0.3 * u, -3.9 * u); g.lineWidth = u * 0.18; g.stroke(); // arms above her head
+  g.beginPath(); g.arc(0, -4.6 * u, 0.42 * u, 0, TAU); g.fillStyle = "rgb(240,214,200)"; g.fill();
+  g.restore();
+  g.globalCompositeOperation = "multiply"; blit(chapel.grain, x0, y0); g.globalCompositeOperation = "source-over";
+  g.restore();
 }
 
 const ARTS = {
@@ -2006,7 +2481,10 @@ const ARTS = {
   feria: { scene: feriaScene },
   sun: { scene: sunScene },
   heaven: { scene: heavenScene },
-  meadow: { scene: meadowScene }
+  lilies: { scene: liliesScene },
+  guitarist: { scene: guitaristScene },
+  scream: { scene: screamScene },
+  chapel: { scene: chapelScene }
 };
 const K = { spin: 0, punch: 0 };
 function onBeat() {
@@ -2019,7 +2497,9 @@ function onBeat() {
   if (art === "loom") loom.spark = 2;
   if (art === "moon") dancerBeat();
   if (art === "sun") sunBeat();
-  if (art === "meadow") meadowBeat();
+  if (art === "lilies") liliesBeat();
+  if (art === "guitarist") guitaristBeat();
+  if (art === "scream") screamBeat();
   if (art === "manton") { manton.fr.v += manton.side * (1.4 + S.bass); manton.ang.v += manton.side * 0.6; manton.side *= -1; }
   if (art === "feria") { feria.wave = 0; feria.splash = 1; feria.palm.v += (Math.random() < 0.5 ? -1 : 1) * (0.6 + S.bass); }
 }
