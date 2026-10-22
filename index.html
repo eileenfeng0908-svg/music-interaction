@@ -2089,145 +2089,213 @@ function canvasGrain(w, h, seed) {
   });
 }
 
-// --- Room 4, piece i: an old blind guitarist hunched over his guitar, painted all in blues ---
-// His left hand slides up and down the neck with the pitch of the scale, his right hand plucks each note.
-const guitarist = { key: "", back: null, grain: null, slide: 0.5, pluck: 0, lastPitch: 0, nod: { x: 0, v: 0 }, strum: 0 };
-const BLUE = { deep: [16, 30, 56], dark: [26, 46, 80], mid: [44, 74, 116], light: [96, 128, 164], pale: [150, 172, 194] };
-const BSKIN = { light: [168, 186, 200], mid: [116, 138, 160], dark: [58, 78, 104] };
-function guitaristBeat() { guitarist.nod.v += 0.4 + S.bass * 0.4; guitarist.strum = 1; }
+// --- Room 4, piece i: in the manner of Picasso's Blue Period — an old blind guitarist folded over his guitar ---
+// Everything is blue except the guitar. His fretting hand slides along the neck with the pitch of the scale,
+// a finger of the other hand plucks each new note, and his head sinks a little lower on the strong beats.
+const guitarist = { key: "", back: null, grain: null, slide: 0.5, pluck: 0, lastPitch: 0, nod: { x: 0, v: 0 }, strum: 0, press: 0 };
+const BLUE = { deep: [14, 26, 52], dark: [24, 44, 80], mid: [46, 78, 120], light: [104, 136, 170], pale: [160, 182, 202] };
+const BSKIN = { light: [172, 192, 206], mid: [118, 142, 164], dark: [56, 78, 106], line: [20, 32, 58] };
+function guitaristBeat() { guitarist.nod.v += 0.35 + S.bass * 0.4; guitarist.strum = 1; }
+// A rounded form along a line — a finger, an arm, a shin: dark contour, body colour, a shadow side and a lit side.
+// pts are points, ws widths; light is the direction the light comes from, in the same coordinates.
+function tube(pts0, ws0, c, light, line) {
+  // smooth the centre line through the given points, so joints bend instead of breaking
+  const pts = [], ws = [];
+  for (let i = 0; i < pts0.length - 1; i++) {
+    const p0 = pts0[Math.max(0, i - 1)], p1 = pts0[i], p2 = pts0[i + 1], p3 = pts0[Math.min(pts0.length - 1, i + 2)];
+    for (let k = 0; k < 6; k++) {
+      const s = k / 6, s2 = s * s, s3 = s2 * s;
+      pts.push([0, 1].map(j => 0.5 * (2 * p1[j] + (-p0[j] + p2[j]) * s + (2 * p0[j] - 5 * p1[j] + 4 * p2[j] - p3[j]) * s2 + (-p0[j] + 3 * p1[j] - 3 * p2[j] + p3[j]) * s3)));
+      ws.push(ws0[i] + (ws0[i + 1] - ws0[i]) * s);
+    }
+  }
+  pts.push(pts0[pts0.length - 1]); ws.push(ws0[ws0.length - 1]);
+  const n = pts.map((p, i) => {
+    const a = pts[Math.max(0, i - 1)], b = pts[Math.min(pts.length - 1, i + 1)], dx = b[0] - a[0], dy = b[1] - a[1], l = Math.hypot(dx, dy) || 1;
+    return [-dy / l, dx / l];
+  });
+  const side = Math.sign(n[0][0] * light[0] + n[0][1] * light[1]) || 1, last = pts.length - 1;
+  const outline = grow => {
+    g.beginPath(); pts.forEach((p, i) => (i ? g.lineTo : g.moveTo).call(g, p[0] + n[i][0] * (ws[i] / 2 + grow), p[1] + n[i][1] * (ws[i] / 2 + grow)));
+    const e = pts[last], d = Math.atan2(n[last][1], n[last][0]); g.arc(e[0], e[1], ws[last] / 2 + grow, d, d - Math.PI, true); // rounded end
+    for (let i = last; i >= 0; i--) g.lineTo(pts[i][0] - n[i][0] * (ws[i] / 2 + grow), pts[i][1] - n[i][1] * (ws[i] / 2 + grow));
+    g.closePath();
+  };
+  outline(line); g.fillStyle = `rgb(${c.line})`; g.fill();
+  outline(0); g.fillStyle = `rgb(${c.mid})`; g.fill();
+  g.save(); outline(0); g.clip();
+  // modelled with strokes that follow the form: darker on the shadow side, lighter where the light falls
+  const r = seeded(Math.round(pts[0][0] * 7 + pts[0][1] * 13));
+  const strokes = Math.min(160, Math.round(pts.length * 5));
+  for (let i = 0; i < strokes; i++) {
+    const k = Math.floor(r() * pts.length), off = r() - 0.5, p = pts[k], nn = n[k], wd = ws[k];
+    const lit = off * side; // -0.5 shadow edge … +0.5 lit edge
+    const col = lit < -0.15 ? mixc(c.dark, c.mid, (lit + 0.5) / 0.35) : lit < 0.25 ? mixc(c.mid, c.light, (lit + 0.15) / 0.4) : mixc(c.light, c.mid, (lit - 0.25) / 0.4);
+    const ang = Math.atan2(-nn[0], nn[1]);
+    g.globalAlpha = 0.85; brush(p[0] + nn[0] * off * wd, p[1] + nn[1] * off * wd, wd * (0.35 + r() * 0.35), wd * 0.12, ang, paint(col, 10, r));
+  }
+  g.globalAlpha = 1; g.restore();
+}
+// A long finger in three joints: base, two knuckles, tip. bend curls it; len scales it.
+function finger(x, y, ang, len, bend, wd, light) {
+  const L = [1, 0.66, 0.5].map(k => k * len), pts = [[x, y]];
+  let a = ang;
+  for (let i = 0; i < 3; i++) { const p = pts[i]; pts.push([p[0] + Math.cos(a) * L[i], p[1] + Math.sin(a) * L[i]]); a += bend * (i === 0 ? 0.8 : 1.1); }
+  tube(pts, [wd, wd * 0.92, wd * 0.82, wd * 0.66], BSKIN, light, wd * 0.12);
+  const tp = pts[3], pa = a - bend * 1.1; // a fingernail, pale, at the very tip
+  g.beginPath(); g.ellipse(tp[0] - Math.cos(pa) * wd * 0.2, tp[1] - Math.sin(pa) * wd * 0.2, wd * 0.3, wd * 0.2, pa, 0, TAU); g.fillStyle = `rgba(${BLUE.pale},0.9)`; g.fill();
+  for (let i = 1; i < 3; i++) { const a = Math.atan2(pts[i + 1][1] - pts[i - 1][1], pts[i + 1][0] - pts[i - 1][0]) + Math.PI / 2; g.strokeStyle = `rgba(${BSKIN.dark},0.55)`; g.lineWidth = wd * 0.07; g.beginPath(); g.moveTo(pts[i][0] - Math.cos(a) * wd * 0.25, pts[i][1] - Math.sin(a) * wd * 0.25); g.lineTo(pts[i][0] + Math.cos(a) * wd * 0.25, pts[i][1] + Math.sin(a) * wd * 0.25); g.stroke(); } // knuckle creases
+  return pts;
+}
+// The back of a hand, from the wrist W out to the knuckles (index knuckle KI, little-finger knuckle KP).
+function handBack(W, KI, KP, wristW, light, seed) {
+  const ax = [(KI[0] + KP[0]) / 2 - W[0], (KI[1] + KP[1]) / 2 - W[1]], al = Math.hypot(...ax), d = [ax[0] / al, ax[1] / al];
+  const pp = [KI[0] - KP[0], KI[1] - KP[1]], pl = Math.hypot(...pp), q = [pp[0] / pl, pp[1] / pl];
+  const shape = () => {
+    g.beginPath(); g.moveTo(W[0] + q[0] * wristW / 2, W[1] + q[1] * wristW / 2);
+    g.quadraticCurveTo(KI[0] - d[0] * al * 0.4 + q[0] * 0.6, KI[1] - d[1] * al * 0.4 + q[1] * 0.6, KI[0] + q[0] * 0.45 + d[0] * 0.2, KI[1] + q[1] * 0.45 + d[1] * 0.2);
+    g.quadraticCurveTo((KI[0] + KP[0]) / 2 + d[0] * 0.7, (KI[1] + KP[1]) / 2 + d[1] * 0.7, KP[0] - q[0] * 0.4 + d[0] * 0.2, KP[1] - q[1] * 0.4 + d[1] * 0.2);
+    g.quadraticCurveTo(KP[0] - d[0] * al * 0.5 - q[0] * 0.4, KP[1] - d[1] * al * 0.5 - q[1] * 0.4, W[0] - q[0] * wristW / 2, W[1] - q[1] * wristW / 2);
+    g.closePath();
+  };
+  g.strokeStyle = `rgb(${BSKIN.line})`; g.lineWidth = 0.32; shape(); g.stroke();
+  const lit = [W[0] + light[0] * 2, W[1] + light[1] * 2], dk = [W[0] - light[0] * 2, W[1] - light[1] * 2];
+  paintedFill(shape, BSKIN.light, BSKIN.dark, Math.atan2(d[1], d[0]), seed, 40, 0.8, lit[0], lit[1], dk[0], dk[1]);
+  g.strokeStyle = `rgba(${BSKIN.dark},0.6)`; g.lineWidth = 0.14; // tendons running to each knuckle
+  for (let k = 0; k < 4; k++) { const kk = [KP[0] + pp[0] * k / 3, KP[1] + pp[1] * k / 3]; g.beginPath(); g.moveTo(W[0] + q[0] * (k - 1.5) * 0.3, W[1] + q[1] * (k - 1.5) * 0.3); g.lineTo(kk[0] - d[0] * 0.3, kk[1] - d[1] * 0.3); g.stroke();
+    g.beginPath(); g.ellipse(kk[0], kk[1], 0.45, 0.3, Math.atan2(q[1], q[0]), 0, TAU); g.fillStyle = `rgba(${BSKIN.light},0.22)`; g.fill(); } // knuckle bumps
+  return d;
+}
 function guitaristScene(t, dt, box) {
   const h = box.h, w = Math.min(box.w, h * 0.66), x0 = box.x + (box.w - w) / 2, y0 = box.y, u = h / 100;
   const X = v => x0 + v * u, Y = v => y0 + v * u, P = (x, y) => [X(x), Y(y)];
+  const LIGHT = [-0.7, -0.7];
   const key = Math.round(w) + "x" + Math.round(h) + "@" + DPR;
   if (guitarist.key !== key) { // the room, his crossed legs and his hunched body are painted once
     guitarist.key = key;
     guitarist.grain = canvasGrain(w, h, 61);
     guitarist.back = offscreen(w, h, () => {
-      const A = v => v * u, r = seeded(62);
-      // the wall: deep blue, with a paler corner of light behind his head
-      const bg = g.createLinearGradient(0, 0, w, h); bg.addColorStop(0, `rgb(${BLUE.mid})`); bg.addColorStop(0.5, `rgb(${BLUE.dark})`); bg.addColorStop(1, `rgb(${BLUE.deep})`);
+      const A = v => v * u, Q = (x, y) => [A(x), A(y)], r = seeded(62);
+      // the wall: deep Prussian blue in long vertical strokes, a paler band of light to the left
+      const bg = g.createLinearGradient(0, 0, w, 0); bg.addColorStop(0, `rgb(${BLUE.mid})`); bg.addColorStop(0.3, `rgb(${BLUE.dark})`); bg.addColorStop(1, `rgb(${BLUE.deep})`);
       g.fillStyle = bg; g.fillRect(0, 0, w, h);
-      for (let i = 0; i < w * h / 60; i++) { const x = r() * w, y = r() * h, k = (x / w + y / h) / 2; brush(x, y, 8 + r() * 10, 3 + r() * 2, 1.3 + (r() - 0.5) * 0.5, paint(mixc(BLUE.mid, BLUE.deep, k), 9, r)); }
-      g.beginPath(); g.moveTo(0, 0); g.lineTo(A(30), 0); g.lineTo(A(8), A(70)); g.lineTo(0, A(78)); g.closePath();
-      g.save(); g.clip(); g.fillStyle = `rgba(${BLUE.light},0.35)`; g.fillRect(0, 0, A(30), A(78)); for (let i = 0; i < 700; i++) { const x = r() * A(30), y = r() * A(78); g.globalAlpha = 0.45; brush(x, y, 12 + r() * 14, 2.5, 1.4 + (r() - 0.5) * 0.25, paint(mixc(mixc(BLUE.light, BLUE.mid, 0.4), BLUE.mid, y / A(78)), 8, r)); } g.globalAlpha = 1; g.restore();
-      // the floor
-      paintedFill(() => { g.beginPath(); g.rect(0, A(84), w, h - A(84)); }, BLUE.mid, BLUE.deep, 0.05, 63, 500, A(2.5), 0, A(84), 0, h);
-      // the body: a long hunched back under a ragged shirt
-      paintedFill(() => { g.beginPath(); g.moveTo(A(22), A(40)); g.quadraticCurveTo(A(26), A(26), A(36), A(25)); g.bezierCurveTo(A(52), A(26), A(58), A(48), A(55), A(66)); g.quadraticCurveTo(A(54), A(76), A(50), A(82)); g.lineTo(A(18), A(82)); g.quadraticCurveTo(A(16), A(60), A(22), A(40)); g.closePath(); },
-        BLUE.light, BLUE.deep, 1.2, 66, 1300, A(2.6), A(30), A(24), A(56), A(76));
-      g.strokeStyle = `rgba(${BLUE.deep},0.8)`; g.lineCap = "round"; // folds of the shirt
-      for (const [a, c, b] of [[[40, 30], [46, 46], [44, 62]], [[48, 36], [53, 52], [50, 70]], [[30, 30], [34, 42], [30, 54]]]) { g.lineWidth = A(0.6); g.beginPath(); g.moveTo(A(a[0]), A(a[1])); g.quadraticCurveTo(A(c[0]), A(c[1]), A(b[0]), A(b[1])); g.stroke(); }
-      g.strokeStyle = `rgba(${BLUE.pale},0.5)`; g.lineWidth = A(0.5); g.beginPath(); g.moveTo(A(31), A(25.5)); g.bezierCurveTo(A(48), A(25), A(56), A(44), A(55), A(60)); g.stroke(); // light along his back
-      // crossed legs in thin trousers, a bony bare foot in front
-      paintedFill(() => { g.beginPath(); g.moveTo(A(4), A(84)); g.bezierCurveTo(A(10), A(74), A(30), A(76), A(46), A(80)); g.bezierCurveTo(A(58), A(80), A(64), A(86), A(62), A(93)); g.bezierCurveTo(A(46), A(98), A(18), A(98), A(4), A(94)); g.closePath(); },
-        BLUE.light, BLUE.dark, -0.1, 64, 700, A(2.2), A(10), A(76), A(40), A(98));
-      for (const [a, b] of [[[12, 84], [46, 88]], [[20, 92], [56, 90]]]) { g.strokeStyle = `rgba(${BLUE.deep},0.7)`; g.lineWidth = A(0.5); g.beginPath(); g.moveTo(A(a[0]), A(a[1])); g.quadraticCurveTo(A((a[0] + b[0]) / 2), A(a[1] - 2), A(b[0]), A(b[1])); g.stroke(); }
-      paintedFill(() => { g.beginPath(); g.moveTo(A(2), A(90)); g.bezierCurveTo(A(2), A(86), A(8), A(85), A(13), A(87)); g.lineTo(A(15), A(92)); g.bezierCurveTo(A(10), A(95), A(4), A(95), A(2), A(93)); g.closePath(); },
-        BSKIN.light, BSKIN.dark, 0, 65, 120, A(1), A(4), A(86), A(12), A(94));
-      for (let k = 0; k < 4; k++) { g.strokeStyle = `rgb(${BSKIN.dark})`; g.lineWidth = A(0.25); g.beginPath(); g.moveTo(A(3 + k * 0.8), A(90.5)); g.lineTo(A(2.4 + k * 0.8), A(92.5)); g.stroke(); } // toes
+      for (let i = 0; i < w * h / 70; i++) { const x = r() * w, y = r() * A(76), k = x / w; g.globalAlpha = 0.5; brush(x, y, A(2 + r() * 4), A(0.5 + r() * 0.4), Math.PI / 2 + (r() - 0.5) * 0.2, paint(mixc(mixc(BLUE.light, BLUE.mid, 0.5), BLUE.deep, Math.min(1, k * 1.4)), 10, r)); }
+      // the floor, darker, in flat horizontal strokes
+      g.globalAlpha = 1; g.fillStyle = `rgb(${mixc(BLUE.dark, BLUE.deep, 0.4)})`; g.fillRect(0, A(76), w, h - A(76));
+      for (let i = 0; i < w * h / 160; i++) { const x = r() * w, y = A(76) + r() * (h - A(76)); g.globalAlpha = 0.5; brush(x, y, A(2 + r() * 4), A(0.4), (r() - 0.5) * 0.15, paint(mixc(BLUE.mid, BLUE.deep, (y - A(76)) / (h - A(76))), 10, r)); }
+      g.globalAlpha = 1;
+      // crossed legs in thin, worn trousers: knees out to each side, one bare foot in front
+      const TR = { line: BLUE.deep, dark: BLUE.deep, mid: mixc(BLUE.dark, BLUE.deep, 0.2), light: mixc(BLUE.mid, BLUE.dark, 0.2) };
+      tube([Q(46, 78), Q(56, 82), Q(63, 88)], [A(9), A(7), A(5.4)], TR, LIGHT, A(0.35)); // far thigh, knee out to the right
+      tube([Q(63, 90), Q(46, 94.5), Q(26, 96)], [A(4.6), A(3.8), A(3.2)], TR, LIGHT, A(0.35)); // far shin, tucked under
+      tube([Q(30, 79), Q(16, 82), Q(5, 87)], [A(9), A(7), A(5.4)], TR, LIGHT, A(0.35)); // near thigh, knee out to the left
+      tube([Q(4, 89), Q(18, 92), Q(33, 93)], [A(4.8), A(4), A(3.2)], TR, LIGHT, A(0.35)); // near shin crossing in front
+      // the bare foot: long and bony, its toes on the floor
+      tube([Q(32, 92.6), Q(36.5, 93.2), Q(40.5, 94.4)], [A(3.4), A(2.9), A(2.2)], BSKIN, LIGHT, A(0.3));
+      for (let k = 0; k < 4; k++) tube([Q(40 + k * 0.1, 93.2 + k * 0.6), Q(42.2 - k * 0.3, 93.6 + k * 0.62)], [A(0.85 - k * 0.08), A(0.7 - k * 0.07)], BSKIN, LIGHT, A(0.1));
+      // the hunched body in a torn shirt: the back rises in one long curve, the light catching its top
+      const torso = () => { g.beginPath(); g.moveTo(...Q(26, 27)); g.lineTo(...Q(33, 20.5)); g.quadraticCurveTo(...Q(40, 17.5), ...Q(46, 19.5)); g.quadraticCurveTo(...Q(51, 22), ...Q(52.5, 28)); g.quadraticCurveTo(...Q(55, 40), ...Q(53.5, 52)); g.quadraticCurveTo(...Q(52, 64), ...Q(53, 79)); g.lineTo(...Q(49, 81)); g.lineTo(...Q(45, 79.5)); g.lineTo(...Q(40, 81.5)); g.lineTo(...Q(34, 80)); g.lineTo(...Q(28, 82)); g.lineTo(...Q(23, 80.5)); g.bezierCurveTo(...Q(21, 68), ...Q(21.5, 52), ...Q(23.5, 44)); g.bezierCurveTo(...Q(24.5, 38), ...Q(24.5, 32), ...Q(26, 27)); g.closePath(); };
+      g.strokeStyle = `rgb(${BSKIN.line})`; g.lineWidth = A(0.9); torso(); g.stroke();
+      paintedFill(torso, BLUE.light, BLUE.deep, 1.3, 66, 900, A(1.6), A(28), A(18), A(56), A(64));
+      g.save(); torso(); g.clip();
+      g.strokeStyle = `rgba(${BLUE.pale},0.55)`; g.lineWidth = A(1.6); g.beginPath(); g.moveTo(...Q(28, 25)); g.bezierCurveTo(...Q(33, 18), ...Q(44, 17), ...Q(50, 24)); g.stroke(); // light along the top of his back
+      g.lineCap = "round"; const rr = seeded(68); // soft folds: long dark and light strokes falling down the back
+      for (let i = 0; i < 40; i++) { const x = 27 + rr() * 25, y = 22 + rr() * 52, l = 8 + rr() * 14; g.strokeStyle = rr() < 0.6 ? `rgba(${BLUE.deep},0.3)` : `rgba(${BLUE.light},0.22)`; g.lineWidth = A(0.25 + rr() * 0.45); g.beginPath(); g.moveTo(...Q(x, y)); g.quadraticCurveTo(...Q(x + 2, y + l * 0.5), ...Q(x + 1 + (x - 40) * 0.1, y + l)); g.stroke(); }
+      g.fillStyle = `rgba(${BLUE.deep},0.3)`; g.beginPath(); g.ellipse(...Q(44, 26), A(4.5), A(2.6), -0.3, 0, TAU); g.fill(); // the shoulder blade under the cloth
+      g.fillStyle = `rgba(${BLUE.pale},0.25)`; g.beginPath(); g.ellipse(...Q(42, 22.5), A(4), A(1.6), -0.2, 0, TAU); g.fill();
+      g.fillStyle = `rgba(${BLUE.deep},0.5)`; g.beginPath(); g.moveTo(...Q(52, 30)); g.quadraticCurveTo(...Q(58, 46), ...Q(56, 78)); g.lineTo(...Q(50, 78)); g.quadraticCurveTo(...Q(53, 50), ...Q(52, 30)); g.fill(); // shadow down his far side
+      g.restore();
     });
   }
   // --- movement ---
   const pitchK = S.pitchOn ? Math.max(0, Math.min(1, (S.pitch - 0.8) / 2.6)) : guitarist.slide;
-  guitarist.slide += (pitchK - guitarist.slide) * Math.min(1, dt * 6);
-  if (S.pitchOn && Math.abs(S.pitch - guitarist.lastPitch) > 0.05) { guitarist.pluck = 1; guitarist.lastPitch = S.pitch; }
-  guitarist.pluck *= Math.pow(0.02, dt); guitarist.strum *= Math.pow(0.05, dt);
+  guitarist.slide += (pitchK - guitarist.slide) * Math.min(1, dt * 5);
+  if (S.pitchOn && Math.abs(S.pitch - guitarist.lastPitch) > 0.05) { guitarist.pluck = 1; guitarist.press = 1; guitarist.lastPitch = S.pitch; }
+  guitarist.pluck *= Math.pow(0.02, dt); guitarist.strum *= Math.pow(0.05, dt); guitarist.press *= Math.pow(0.1, dt);
   spring(guitarist.nod, dt, 5, 2.2);
   const breathe = Math.sin(t * 0.9) * 0.3;
 
   g.save(); g.beginPath(); g.rect(x0, y0, w, h); g.clip();
   blit(guitarist.back, x0, y0);
-  // the guitar: the one warm colour in the picture
-  const gx = 42, gy = 66 + breathe * 0.3, ga = Math.atan2(56 - 66, 2 - 42);
-  const G = (lx, ly) => [gx + Math.cos(ga) * lx - Math.sin(ga) * ly, gy + Math.sin(ga) * lx + Math.cos(ga) * ly]; // guitar space → picture units
+  // the guitar's frame of reference: +x runs up the neck (to the left), +y towards its upper edge
+  const gx = 40, gy = 65 + breathe * 0.25, ga = Math.atan2(52 - 65, 3 - 40);
+  const G = (lx, ly) => [gx + Math.cos(ga) * lx - Math.sin(ga) * ly, gy + Math.sin(ga) * lx + Math.cos(ga) * ly];
+  const lightG = [Math.cos(-ga) * LIGHT[0] - Math.sin(-ga) * LIGHT[1], Math.sin(-ga) * LIGHT[0] + Math.cos(-ga) * LIGHT[1]];
+  // his left arm hangs from the shoulder, the forearm rising under the neck to the hand
+  const fretX = 15 + 20 * (0.92 - guitarist.slide * 0.8), wristL = G(fretX + 2.4, -6.6);
+  const elL = [19 + breathe * 0.2, 54 + guitarist.slide * 1.5];
+  tube([P(27, 34), P(22, 44), P(...elL), P((elL[0] + wristL[0]) / 2 - 0.5, (elL[1] + wristL[1]) / 2 + 0.6), P(...wristL)], [u * 4.2, u * 3.6, u * 2.9, u * 2.7, u * 2.5], BSKIN, LIGHT, u * 0.35);
+  // the guitar: the one warm thing in the picture
   g.save(); g.translate(X(gx), Y(gy)); g.rotate(ga); g.scale(u, u);
-  const body = () => { g.beginPath(); g.moveTo(-13.5, 0); g.bezierCurveTo(-13.5, -11, 1, -11, 3, -6.5); g.bezierCurveTo(5, -8.2, 15, -8.5, 15.5, 0); g.bezierCurveTo(15, 8.5, 5, 8.2, 3, 6.5); g.bezierCurveTo(1, 11, -13.5, 11, -13.5, 0); g.closePath(); };
-  paintedFill(body, [190, 132, 74], [78, 44, 26], 0, 70, 160, 1.4, -6, -8, 10, 9);
-  g.strokeStyle = "rgb(52,30,20)"; g.lineWidth = 0.35; body(); g.stroke();
-  paintedFill(() => { g.beginPath(); g.rect(14, -1.4, 22, 2.8); }, [120, 80, 48], [60, 36, 22], 0, 71, 30, 1.2, 14, -1.4, 14, 1.4); // neck
-  paintedFill(() => { g.beginPath(); g.moveTo(36, -1.6); g.lineTo(42, -2); g.lineTo(42, 2); g.lineTo(36, 1.6); g.closePath(); }, [96, 62, 38], [50, 30, 20], 0, 72, 10, 0.8, 36, -2, 36, 2);
-  g.beginPath(); g.arc(4.5, 0, 3, 0, TAU); g.fillStyle = "rgb(24,16,14)"; g.fill(); // sound hole
-  g.strokeStyle = "rgba(200,170,120,0.6)"; g.lineWidth = 0.25; g.beginPath(); g.arc(4.5, 0, 3.5, 0, TAU); g.stroke();
-  g.fillStyle = "rgb(40,24,16)"; g.fillRect(-8.6, -2.4, 1.6, 4.8); // bridge
-  for (let f = 0; f < 9; f++) { const fx = 36 - 22 * (1 - Math.pow(0.9, f * 1.8)) * 1.05; g.fillStyle = "rgba(200,190,170,0.6)"; g.fillRect(fx, -1.4, 0.2, 2.8); } // frets
+  const body = () => { g.beginPath(); g.moveTo(-14, 0); g.bezierCurveTo(-14, -11.5, 0.5, -11.5, 3, -6.8); g.bezierCurveTo(5, -8.6, 15.5, -8.8, 16, 0); g.bezierCurveTo(15.5, 8.8, 5, 8.6, 3, 6.8); g.bezierCurveTo(0.5, 11.5, -14, 11.5, -14, 0); g.closePath(); };
+  g.lineWidth = 0.9; g.strokeStyle = "rgb(40,22,14)"; body(); g.stroke(); // its rim
+  paintedFill(body, [204, 146, 82], [92, 54, 28], 0, 70, 200, 1.6, 0, 9, 4, -10);
+  g.save(); body(); g.clip();
+  g.strokeStyle = "rgba(250,206,140,0.45)"; g.lineWidth = 0.7; g.beginPath(); g.moveTo(-13, 3); g.bezierCurveTo(-12, 9.5, 0, 10, 2.6, 6.4); g.stroke(); // light along the upper edge
+  for (let k = 0; k < 14; k++) { g.strokeStyle = `rgba(80,44,22,${0.12 + (k % 3) * 0.05})`; g.lineWidth = 0.18; g.beginPath(); g.moveTo(-14, -9 + k * 1.4); g.lineTo(16, -9.4 + k * 1.4); g.stroke(); } // spruce grain
+  g.restore();
+  g.beginPath(); g.arc(4.6, 0, 3.1, 0, TAU); g.fillStyle = "rgb(20,12,10)"; g.fill(); // sound hole
+  for (const [rr, c] of [[3.5, "rgba(240,210,150,0.8)"], [3.9, "rgba(60,30,20,0.9)"], [4.3, "rgba(230,190,130,0.7)"]]) { g.strokeStyle = c; g.lineWidth = 0.28; g.beginPath(); g.arc(4.6, 0, rr, 0, TAU); g.stroke(); } // rosette
+  g.fillStyle = "rgb(46,26,16)"; g.beginPath(); g.moveTo(-9.6, -3.6); g.lineTo(-7.6, -3.2); g.lineTo(-7.6, 3.2); g.lineTo(-9.6, 3.6); g.closePath(); g.fill(); // bridge
+  g.fillStyle = "rgb(226,214,190)"; g.fillRect(-8.2, -2.6, 0.3, 5.2); // saddle
+  paintedFill(() => { g.beginPath(); g.moveTo(15, -1.7); g.lineTo(37, -1.35); g.lineTo(37, 1.35); g.lineTo(15, 1.7); g.closePath(); }, [100, 62, 38], [40, 24, 16], 0, 71, 40, 1, 15, 1.7, 15, -1.7); // fingerboard
+  for (let f = 1; f < 13; f++) { const fx = 37 - 22 * (1 - Math.pow(2, -f / 12)) * 1.7; g.fillStyle = "rgba(210,200,184,0.75)"; g.fillRect(fx, -1.6, 0.16, 3.2); } // frets
+  g.fillStyle = "rgb(230,220,200)"; g.fillRect(36.8, -1.4, 0.4, 2.8); // nut
+  paintedFill(() => { g.beginPath(); g.moveTo(37.2, -1.6); g.lineTo(43.5, -2.2); g.lineTo(43.5, 2.2); g.lineTo(37.2, 1.6); g.closePath(); }, [130, 84, 50], [56, 32, 20], 0, 72, 16, 0.8, 38, 2, 38, -2); // head
+  for (let k = 0; k < 3; k++) for (const s of [-1, 1]) { g.beginPath(); g.ellipse(39 + k * 1.6, s * 2.6, 0.5, 0.35, 0, 0, TAU); g.fillStyle = "rgb(220,200,160)"; g.fill(); } // tuning pegs
   for (let s = 0; s < 6; s++) { // strings: each shakes with its own part of the sound
-    const yb = -1.8 + s * 0.72, yn = -1.1 + s * 0.44, amp = (S.spec[2 + s * 2] * 0.5 + guitarist.pluck * 0.25 + guitarist.strum * 0.15) * 0.6;
-    for (const side of [-1, 1]) {
-      g.strokeStyle = `rgba(226,214,190,${amp > 0.05 ? 0.45 : 0.8})`; g.lineWidth = 0.14 + (5 - s) * 0.025;
-      g.beginPath(); g.moveTo(-7.8, yb); g.quadraticCurveTo(14, (yb + yn) / 2 + side * amp, 36, yn); g.stroke();
-    }
+    const yb = -2.2 + s * 0.88, yn = -1.1 + s * 0.44, amp = (S.spec[2 + s * 2] * 0.4 + guitarist.pluck * (s === 2 ? 0.5 : 0.12) + guitarist.strum * 0.12) * 0.5;
+    g.strokeStyle = `rgba(232,222,200,${0.9 - Math.min(0.4, amp)})`; g.lineWidth = 0.1 + (5 - s) * 0.025;
+    for (const side of amp > 0.03 ? [-1, 1] : [0]) { g.beginPath(); g.moveTo(-8, yb); g.quadraticCurveTo(14, (yb + yn) / 2 + side * amp, 37, yn); g.stroke(); }
   }
+  // his left hand on the neck: four long fingers arch up from below onto the strings, the thumb's tip shows over the top
+  const fx = fretX, press = guitarist.press, WL = [fx + 2.4, -6.6], KI = [fx + 2.2, -2.9], KP = [fx - 2.2, -3.4];
+  g.save(); g.beginPath(); g.rect(fx - 6, 1.42, 12, 4); g.clip(); finger(fx + 3.4, 0.6, Math.PI * 0.62, 1.5, 0.35, 1.15, lightG); g.restore(); // thumb, mostly hidden behind the neck
+  for (let k = 3; k >= 0; k--) { // little finger first, index last; the pressing finger digs in when a note changes
+    const b = [KP[0] + (KI[0] - KP[0]) * k / 3, KP[1] + (KI[1] - KP[1]) * k / 3], dip = k === Math.floor(guitarist.slide * 3.99) ? press * 0.3 : 0;
+    finger(b[0], b[1], Math.PI / 2 + 0.12 - k * 0.04, [2.1, 2.4, 2.3, 1.8][3 - k] * 0.95, 0.42 + dip, [1.05, 1.1, 1.05, 0.9][3 - k], lightG);
+  }
+  handBack(WL, KI, KP, 2.5, lightG, 73);
   g.restore();
-  // a thin, bony hand: a palm and four long fingers, each bent at two knuckles
-  const boneHand = (hx, hy, ang, curls, spread) => {
-    g.save(); g.translate(hx, hy); g.rotate(ang); g.lineCap = "round"; g.lineJoin = "round";
-    g.beginPath(); g.moveTo(-u * 0.4, -u * 0.8); g.quadraticCurveTo(u * 1.2, -u * 1.5, u * 2.4, -u * 1.2); g.lineTo(u * 2.5, u * 1.1); g.quadraticCurveTo(u * 1.2, u * 1.2, -u * 0.4, u * 0.7); g.closePath();
-    const pg = g.createLinearGradient(0, -u * 1.3, 0, u * 1.2); pg.addColorStop(0, `rgb(${mixc(BSKIN.light, BSKIN.mid, 0.4)})`); pg.addColorStop(1, `rgb(${BSKIN.dark})`); g.fillStyle = pg; g.fill();
-    g.strokeStyle = `rgb(${BSKIN.dark})`; g.lineWidth = u * 0.22; g.stroke();
-    for (let f = 0; f < 4; f++) {
-      const c = curls[f], base = [u * 2.3, (f - 1.5) * u * 0.75], a0 = (f - 1.5) * spread;
-      const k1 = [base[0] + Math.cos(a0) * u * 1.7, base[1] + Math.sin(a0) * u * 1.7];
-      const k2 = [k1[0] + Math.cos(a0 + c) * u * 1.3, k1[1] + Math.sin(a0 + c) * u * 1.3];
-      const tip = [k2[0] + Math.cos(a0 + c * 2) * u * 1, k2[1] + Math.sin(a0 + c * 2) * u * 1];
-      for (const [col, wd] of [[BSKIN.dark, 0.95], [BSKIN.mid, 0.65]]) { g.strokeStyle = `rgb(${col})`; g.lineWidth = u * wd; g.beginPath(); g.moveTo(...base); g.lineTo(...k1); g.lineTo(...k2); g.lineTo(...tip); g.stroke(); }
-      g.strokeStyle = `rgba(${BSKIN.light},0.8)`; g.lineWidth = u * 0.18; g.beginPath(); g.moveTo(base[0], base[1] - u * 0.15); g.lineTo(k1[0], k1[1] - u * 0.15); g.stroke(); // light on each finger
-    }
-    g.restore();
-  };
-  const arm = (sh, el, wr, seed) => { // a thin arm: upper arm and forearm meeting at a sharp elbow, a ragged sleeve at the shoulder
-    const S0 = P(...sh), E = P(...el), Wr = P(...wr);
-    const nrm = (a, b) => { const dx = b[0] - a[0], dy = b[1] - a[1], n = Math.hypot(dx, dy) || 1; return [-dy / n, dx / n]; };
-    const n1 = nrm(S0, E), n2 = nrm(E, Wr), nE = [(n1[0] + n2[0]) / 2, (n1[1] + n2[1]) / 2];
-    const lerp = (a, b, k) => [a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k];
-    const M1 = lerp(S0, E, 0.45), M2 = lerp(E, Wr, 0.3);
-    const pts = [[S0, n1, 2.2], [M1, n1, 1.7], [E, nE, 1.25], [M2, n2, 1.4], [Wr, n2, 0.85]];
-    const path = () => { g.beginPath(); pts.forEach(([p, n, wd], i) => (i ? g.lineTo : g.moveTo).call(g, p[0] + n[0] * wd * u, p[1] + n[1] * wd * u)); for (let i = pts.length - 1; i >= 0; i--) { const [p, n, wd] = pts[i]; g.lineTo(p[0] - n[0] * wd * u, p[1] - n[1] * wd * u); } g.closePath(); };
-    paintedFill(path, mixc(BSKIN.light, BSKIN.mid, 0.3), BSKIN.dark, Math.atan2(E[1] - S0[1], E[0] - S0[0]), seed, 60, u, S0[0], S0[1], Wr[0], Wr[1]);
-    g.strokeStyle = `rgb(${BSKIN.dark})`; g.lineWidth = u * 0.25; g.lineJoin = "round"; path(); g.stroke();
-    g.strokeStyle = `rgba(${BSKIN.light},0.85)`; g.lineWidth = u * 0.3; g.beginPath(); g.moveTo(M1[0] + n1[0] * u * 0.9, M1[1] + n1[1] * u * 0.9); g.lineTo(E[0] + nE[0] * u * 0.7, E[1] + nE[1] * u * 0.7); g.lineTo(M2[0] + n2[0] * u * 0.7, M2[1] + n2[1] * u * 0.7); g.stroke(); // light along the bone
-    const sl = lerp(S0, E, 0.4); // the sleeve
-    g.beginPath(); g.moveTo(S0[0] + n1[0] * 3 * u, S0[1] + n1[1] * 3 * u); g.lineTo(sl[0] + n1[0] * 2.2 * u, sl[1] + n1[1] * 2.2 * u);
-    for (let k = 1; k <= 4; k++) { const q = lerp([sl[0] + n1[0] * 2.2 * u, sl[1] + n1[1] * 2.2 * u], [sl[0] - n1[0] * 2.2 * u, sl[1] - n1[1] * 2.2 * u], k / 4), dd = nrm([0, 0], n1); g.lineTo(q[0] + dd[0] * (k % 2 ? 1.2 : -0.3) * u * -1, q[1] + dd[1] * (k % 2 ? 1.2 : -0.3) * u * -1); }
-    g.lineTo(S0[0] - n1[0] * 3 * u, S0[1] - n1[1] * 3 * u); g.closePath();
-    g.fillStyle = `rgb(${mixc(BLUE.mid, BLUE.dark, 0.3)})`; g.fill(); g.strokeStyle = `rgba(${BLUE.deep},0.8)`; g.lineWidth = u * 0.25; g.stroke();
-  };
-  // his left arm reaches round to the neck; the hand slides along it with the pitch
-  const neckP = 0.85 - guitarist.slide * 0.7, hand = G(14 + 22 * neckP, -2.4), el = [13 + breathe * 0.2, 50 + guitarist.slide * 2];
-  arm([25, 38], el, hand, 73);
-  const press = guitarist.pluck * 0.3;
-  boneHand(X(hand[0]), Y(hand[1]), ga + Math.PI / 2 + 0.1, [0.9 + press, 1.1, 1.0 - press, 1.2], 0.12);
-  // his neck, thin and corded, bent far forward
-  paintedFill(() => { g.beginPath(); g.moveTo(X(23), Y(32)); g.quadraticCurveTo(X(26), Y(27), X(31), Y(27)); g.lineTo(X(30), Y(33)); g.quadraticCurveTo(X(27), Y(36), X(24.5), Y(37)); g.closePath(); }, BSKIN.mid, BSKIN.dark, 0.8, 80, 30, u, X(25), Y(28), X(28), Y(36));
-  g.strokeStyle = `rgba(${BSKIN.light},0.7)`; g.lineWidth = u * 0.3; g.beginPath(); g.moveTo(X(24.5), Y(33)); g.quadraticCurveTo(X(27), Y(30), X(30), Y(29)); g.stroke();
-  // his head bowed low over the guitar, eyes shut, a long grey beard
-  const nod = guitarist.nod.x * 0.06 + Math.sin(t * 0.45) * 0.025 + guitarist.pluck * 0.02;
-  g.save(); g.translate(X(21.5), Y(30)); g.rotate(-0.55 + nod); g.scale(u, u); g.lineCap = "round";
-  paintedFill(() => { g.beginPath(); g.ellipse(1.6, -2.6, 4.6, 5.2, 0.1, 0, TAU); }, [120, 140, 162], [40, 56, 82], 1.2, 74, 60, 1, -2, -7, 5, 2); // the back of his skull and hair
-  for (let k = 0; k < 9; k++) { const a = -2.4 + k * 0.28; g.strokeStyle = k % 3 ? `rgb(${BLUE.light})` : `rgb(${BLUE.pale})`; g.lineWidth = 0.25; g.beginPath(); g.moveTo(1.6 + Math.cos(a) * 3.6, -2.6 + Math.sin(a) * 4.2); g.quadraticCurveTo(1.6 + Math.cos(a) * 5.2, -2.6 + Math.sin(a) * 5.4, 1.6 + Math.cos(a + 0.25) * 5.4, -2.2 + Math.sin(a + 0.25) * 5.4); g.stroke(); }
-  // a long, gaunt face, lit from the upper left
-  const face = () => { g.beginPath(); g.moveTo(-3.2, -4.6); g.quadraticCurveTo(0, -6.4, 3.4, -4.4); g.quadraticCurveTo(3.8, -0.5, 2.8, 2.6); g.quadraticCurveTo(1.6, 6.2, -0.2, 6.6); g.quadraticCurveTo(-2.2, 6.2, -2.8, 3); g.quadraticCurveTo(-2.4, 1, -3.4, -0.6); g.quadraticCurveTo(-3.8, -2.8, -3.2, -4.6); g.closePath(); };
-  paintedFill(face, BSKIN.light, BSKIN.dark, 1.4, 75, 70, 0.7, -3, -5, 3.5, 5);
-  g.save(); face(); g.clip();
-  g.fillStyle = `rgba(${BSKIN.dark},0.55)`; for (const ex of [-1.5, 1.7]) { g.beginPath(); g.ellipse(ex, -1.5, 1.4, 0.9, 0, 0, TAU); g.fill(); } // sunken eye sockets
-  g.beginPath(); g.ellipse(-2.4, 2, 0.9, 1.8, 0.2, 0, TAU); g.fill(); g.beginPath(); g.ellipse(2.4, 2, 0.7, 1.6, -0.2, 0, TAU); g.fill(); // hollow cheeks
-  g.fillStyle = `rgba(${BSKIN.light},0.7)`; g.beginPath(); g.ellipse(-2.3, 0.2, 0.8, 0.35, -0.3, 0, TAU); g.fill(); // light on the cheekbone
+  // his head bowed far forward over the strings, eyes shut, a long grey beard
+  const nod = guitarist.nod.x * 0.05 + Math.sin(t * 0.45) * 0.02 + guitarist.pluck * 0.015;
+  tube([P(28.5, 26), P(26.5, 30), P(24, 32)], [u * 4.4, u * 3.8, u * 3.6], BSKIN, LIGHT, u * 0.35); // his neck, corded and thin
+  g.save(); g.translate(X(20.5), Y(30)); g.rotate(0.5 + nod); g.scale(u, u); g.lineCap = "round";
+  const skull = () => { g.beginPath(); g.moveTo(-3.6, 3.4); g.bezierCurveTo(-4.6, 0, -4.4, -5.4, -1.2, -7.2); g.bezierCurveTo(2, -8.4, 5.4, -6, 5.2, -2); g.bezierCurveTo(5.1, 0.8, 4.4, 2.6, 3.6, 3.2); g.quadraticCurveTo(0, 4.4, -3.6, 3.4); g.closePath(); };
+  g.strokeStyle = `rgb(${BSKIN.line})`; g.lineWidth = 0.4; skull(); g.stroke();
+  paintedFill(skull, BSKIN.light, BSKIN.dark, 1.2, 74, 70, 0.8, -3, -6, 4, 4);
+  for (let k = 0; k < 14; k++) { const a = -1.4 + k * 0.17; g.strokeStyle = k % 3 ? `rgba(${BLUE.pale},0.8)` : `rgba(${BLUE.light},0.8)`; g.lineWidth = 0.22; g.beginPath(); g.moveTo(0.6 + Math.cos(a) * 3.2, -1 + Math.sin(a) * 5.4); g.quadraticCurveTo(0.6 + Math.cos(a) * 4.8, -1 + Math.sin(a) * 6.8, 0.6 + Math.cos(a + 0.2) * 4.6, -0.4 + Math.sin(a + 0.2) * 6.6); g.stroke(); } // thin grey hair
+  // the face, turned down and towards us: deep sockets, long nose, hollow cheeks
+  g.fillStyle = `rgba(${BSKIN.dark},0.6)`;
+  g.beginPath(); g.ellipse(-2.2, -0.4, 1.5, 1.1, 0.2, 0, TAU); g.fill(); g.beginPath(); g.ellipse(1.3, -0.6, 1.1, 0.9, 0, 0, TAU); g.fill(); // eye sockets
+  g.beginPath(); g.ellipse(-3.2, 2.8, 0.9, 1.9, 0.1, 0, TAU); g.fill(); g.beginPath(); g.ellipse(2.6, 2.4, 0.7, 1.6, -0.1, 0, TAU); g.fill(); // hollow cheeks
+  g.fillStyle = `rgba(${BSKIN.light},0.85)`; g.beginPath(); g.ellipse(-2.6, 1.2, 0.9, 0.35, -0.2, 0, TAU); g.fill(); g.beginPath(); g.ellipse(-0.6, -2.6, 2.4, 0.6, 0, 0, TAU); g.fill(); // cheekbone and brow catching light
+  g.strokeStyle = `rgb(${BSKIN.line})`;
+  g.lineWidth = 0.3; g.beginPath(); g.moveTo(-3.3, -0.3); g.quadraticCurveTo(-2.2, 0.3, -1.1, -0.2); g.moveTo(0.5, -0.4); g.quadraticCurveTo(1.3, 0.1, 2.1, -0.4); g.stroke(); // closed lids
+  g.lineWidth = 0.32; g.beginPath(); g.moveTo(-0.6, -1); g.bezierCurveTo(-0.5, 1, -1.2, 2.8, -1.6, 3.8); g.quadraticCurveTo(-0.9, 4.3, -0.2, 3.9); g.stroke(); // a long nose
+  g.strokeStyle = `rgba(${BSKIN.light},0.9)`; g.lineWidth = 0.28; g.beginPath(); g.moveTo(-1, -0.8); g.bezierCurveTo(-1, 1, -1.5, 2.6, -1.9, 3.6); g.stroke();
+  g.beginPath(); g.ellipse(4.6, 0.2, 0.8, 1.5, 0.1, 0, TAU); g.fillStyle = `rgb(${BSKIN.mid})`; g.fill(); g.strokeStyle = `rgb(${BSKIN.line})`; g.lineWidth = 0.2; g.stroke(); // ear
+  // beard and moustache in long grey strokes, falling over the guitar
+  const beard = () => { g.beginPath(); g.moveTo(-4, 3.2); g.quadraticCurveTo(-1.5, 4.6, 0.4, 4.2); g.quadraticCurveTo(3, 3.8, 3.8, 3); g.quadraticCurveTo(3.4, 9, 0.2, 13.5 + breathe * 0.3); g.quadraticCurveTo(-3.4, 9, -4, 3.2); g.closePath(); };
+  g.strokeStyle = `rgb(${BSKIN.line})`; g.lineWidth = 0.3; beard(); g.stroke();
+  paintedFill(beard, [170, 184, 200], [70, 88, 112], 1.6, 76, 60, 1, 0, 3, 0, 13);
+  for (let k = 0; k < 16; k++) { const sx = -3.4 + k * 0.45; g.strokeStyle = k % 2 ? `rgba(${BLUE.pale},0.75)` : `rgba(${BLUE.dark},0.55)`; g.lineWidth = 0.14; g.beginPath(); g.moveTo(sx, 3.6); g.quadraticCurveTo(sx * 0.7, 7.5, sx * 0.25 + 0.2, 11.5 + (k % 4) * 0.5); g.stroke(); }
+  g.strokeStyle = `rgb(${BSKIN.line})`; g.lineWidth = 0.22; g.beginPath(); g.moveTo(-2.4, 4.3); g.quadraticCurveTo(-1, 4.1, 0.6, 4.4); g.stroke(); // mouth under the moustache
   g.restore();
-  g.strokeStyle = `rgb(${BLUE.deep})`;
-  g.lineWidth = 0.28; for (const ex of [-1.5, 1.7]) { g.beginPath(); g.moveTo(ex - 1, -1.5); g.quadraticCurveTo(ex, -1, ex + 0.9, -1.4); g.stroke(); } // closed lids
-  g.lineWidth = 0.16; for (const ex of [-1.5, 1.7]) { g.beginPath(); g.moveTo(ex - 0.7, -0.9); g.quadraticCurveTo(ex, -0.5, ex + 0.6, -0.8); g.stroke(); }
-  g.lineWidth = 0.3; g.beginPath(); g.moveTo(-2.6, -2.7); g.quadraticCurveTo(-1.5, -3.1, -0.4, -2.5); g.moveTo(0.6, -2.5); g.quadraticCurveTo(1.8, -3.1, 2.8, -2.6); g.stroke(); // brows
-  g.lineWidth = 0.26; g.beginPath(); g.moveTo(0, -2.3); g.lineTo(-0.1, 1.6); g.quadraticCurveTo(0.4, 2.3, 1, 1.8); g.stroke(); // long nose
-  g.strokeStyle = `rgba(${BSKIN.light},0.9)`; g.lineWidth = 0.22; g.beginPath(); g.moveTo(-0.4, -1.8); g.lineTo(-0.5, 1.2); g.stroke();
-  // beard and moustache: long grey strands falling forward
-  paintedFill(() => { g.beginPath(); g.moveTo(-2.8, 2.6); g.quadraticCurveTo(0, 3.6, 2.8, 2.4); g.quadraticCurveTo(2.6, 7.5, 0.4, 13 + breathe * 0.3); g.quadraticCurveTo(-1.8, 8, -2.8, 2.6); g.closePath(); }, [150, 166, 186], [62, 78, 104], 1.6, 76, 60, 1, 0, 3, 0, 13);
-  for (let k = 0; k < 12; k++) { const sx = -2.2 + k * 0.4; g.strokeStyle = k % 2 ? `rgba(${BLUE.pale},0.7)` : `rgba(${BLUE.dark},0.6)`; g.lineWidth = 0.15; g.beginPath(); g.moveTo(sx, 3); g.quadraticCurveTo(sx * 0.6, 7, sx * 0.25 + 0.4, 11 + (k % 3)); g.stroke(); }
-  g.strokeStyle = `rgb(${BLUE.deep})`; g.lineWidth = 0.22; g.beginPath(); g.moveTo(-1.2, 3.4); g.quadraticCurveTo(0, 3.2, 1.2, 3.3); g.stroke(); // mouth, half hidden
-  g.beginPath(); g.ellipse(3.6, -1, 0.6, 1.2, 0.1, 0, TAU); g.fillStyle = `rgb(${BSKIN.mid})`; g.fill(); g.strokeStyle = `rgb(${BSKIN.dark})`; g.lineWidth = 0.15; g.stroke(); // ear
+  // his right arm: shoulder high on the hunched back, a sharp elbow, the forearm lying across the guitar
+  const handR = G(0.2, 6.6), elR = [56 + breathe * 0.3, 47];
+  tube([P(46, 26), P(51, 35), P(...elR), P((elR[0] + handR[0]) / 2 + 1, (elR[1] + handR[1]) / 2 - 1.5), P(...handR)], [u * 5, u * 4, u * 3, u * 2.8, u * 2.4], BSKIN, LIGHT, u * 0.35);
+  tube([P(44.5, 23.5), P(48, 28), P(50.5, 32)], [u * 6.4, u * 6, u * 5.4], { line: BSKIN.line, dark: BLUE.deep, mid: BLUE.dark, light: BLUE.mid }, LIGHT, u * 0.3); // a ragged sleeve over the shoulder
+  // his right hand over the sound hole: the back of the hand, long fingers curling down onto the strings
+  g.save(); g.translate(X(gx), Y(gy)); g.rotate(ga); g.scale(u, u);
+  const WR = [0.2, 6.6], KRI = [5, 4.2], KRP = [2, 1.9];
+  finger(3.2, 5.6, -0.35, 1.7, -0.1, 1.2, lightG); // thumb reaching towards the neck
+  for (let k = 3; k >= 0; k--) { // the finger that plucks flicks back up after each note
+    const b = [KRP[0] + (KRI[0] - KRP[0]) * k / 3, KRP[1] + (KRI[1] - KRP[1]) * k / 3], flick = k === 2 ? guitarist.pluck * 0.9 : k === 1 ? guitarist.strum * 0.5 : 0;
+    finger(b[0], b[1], -0.95 + k * 0.06 + flick * 0.35, [1.9, 2.2, 2.3, 2.1][3 - k] * (1 - flick * 0.15), -0.32 + flick * 0.3, [0.9, 1.05, 1.1, 1.05][3 - k], lightG);
+  }
+  handBack(WR, KRI, KRP, 2.4, lightG, 77);
   g.restore();
-  // his right arm, elbow sharp against the dark, the hand over the sound hole
-  const pick = G(5 + guitarist.pluck * 0.6, 5), rel = [55 + breathe * 0.3, 49];
-  arm([45, 32], rel, pick, 77);
-  boneHand(X(pick[0]), Y(pick[1]), ga + Math.PI * 0.85, [0.7, 0.6 - guitarist.pluck * 0.5, 0.8 - guitarist.strum * 0.4, 0.9], 0.15);
   g.globalCompositeOperation = "multiply"; blit(guitarist.grain, x0, y0); g.globalCompositeOperation = "source-over";
   g.restore();
 }
@@ -2293,33 +2361,60 @@ function screamScene(t, dt, box) {
   }
   g.restore();
   blit(scream.deck, x0, y0);
-  // the screaming figure: a skull-pale face, hands pressed to it, a dark body that bends with the waves
+  // the screaming figure: a skull-like face held between two hands, a thin dark body that bends with the waves
   const fx = W8 * 0.42, wave = y => Math.sin(y * 0.11 - ph * 1.3) * (1.6 + sw * 2.2);
-  g.beginPath();
-  for (let y = 70; y <= 102; y += 2) g.lineTo(X(fx - 5 - (y - 70) * 0.12 + wave(y)), Y(y));
-  for (let y = 102; y >= 70; y -= 2) g.lineTo(X(fx + 5 + (y - 70) * 0.1 + wave(y)), Y(y));
-  g.closePath();
-  const bg2 = g.createLinearGradient(X(fx - 6), 0, X(fx + 8), 0); bg2.addColorStop(0, "rgb(26,30,46)"); bg2.addColorStop(1, "rgb(52,58,82)"); g.fillStyle = bg2; g.fill();
-  g.strokeStyle = "rgba(90,96,130,0.6)"; g.lineWidth = u * 0.6; // brush ridges along the robe
-  for (let k = -1; k <= 1; k++) { g.beginPath(); for (let y = 72; y <= 100; y += 2) g.lineTo(X(fx + k * 2.4 + wave(y) + (y - 70) * 0.02 * k), Y(y)); g.stroke(); }
-  const hx = fx + wave(62), hy = 62, open = 0.4 + scream.mouth * 0.6 + sw * 0.3;
-  // arms bending up to the face
-  for (const s of [-1, 1]) {
-    g.strokeStyle = "rgb(30,34,50)"; g.lineWidth = u * 3; g.beginPath(); g.moveTo(X(fx + s * 4 + wave(74)), Y(74)); g.quadraticCurveTo(X(hx + s * 9), Y(70), X(hx + s * 5.6), Y(hy + 2)); g.stroke();
+  const SK = { line: [70, 62, 42], dark: [128, 124, 84], mid: [198, 182, 128], light: [236, 222, 172] };
+  const ROBE = { line: [14, 14, 22], dark: [16, 18, 30], mid: [34, 38, 58], light: [70, 74, 104] };
+  const robe = () => {
+    g.beginPath();
+    for (let y = 66; y <= 102; y += 2) { const k = (y - 66) / 36; g.lineTo(X(fx - 4.2 - k * k * 3 + wave(y)), Y(y)); }
+    for (let y = 102; y >= 66; y -= 2) { const k = (y - 66) / 36; g.lineTo(X(fx + 4.2 + k * k * 2.4 + wave(y)), Y(y)); }
+    g.closePath();
+  };
+  g.strokeStyle = `rgb(${ROBE.line})`; g.lineWidth = u * 0.6; robe(); g.stroke();
+  robe(); g.fillStyle = `rgb(${ROBE.mid})`; g.fill();
+  g.save(); robe(); g.clip(); // the robe painted in long wavering strokes that follow the body's sway
+  const rs = seeded(83);
+  for (let i = 0; i < 70; i++) {
+    const off = rs() * 2 - 1, y1 = 64 + rs() * 30, len = 6 + rs() * 10, col = off < -0.3 ? ROBE.dark : off > 0.45 ? ROBE.light : mixc(ROBE.mid, ROBE.dark, rs());
+    g.strokeStyle = `rgb(${col})`; g.lineWidth = u * (0.6 + rs() * 0.9); g.beginPath();
+    for (let y = y1; y <= y1 + len; y += 2) { const k = (y - 66) / 36; g.lineTo(X(fx + off * (4 + k * k * 2.6) + wave(y)), Y(y)); }
+    g.stroke();
   }
-  // the head: a long pale skull, hollow eyes, the mouth an open oval
-  g.save(); g.translate(X(hx), Y(hy)); g.rotate(wave(55) * 0.02); g.scale(u * 0.8, u * 0.8);
-  g.beginPath(); g.moveTo(0, -9); g.bezierCurveTo(6, -9, 6.4, -1, 4.2, 4); g.quadraticCurveTo(2.4, 9.5, 0, 9.5); g.quadraticCurveTo(-2.4, 9.5, -4.2, 4); g.bezierCurveTo(-6.4, -1, -6, -9, 0, -9); g.closePath();
-  const fg = g.createLinearGradient(-5, -9, 5, 9); fg.addColorStop(0, "rgb(232,210,150)"); fg.addColorStop(0.6, "rgb(196,178,120)"); fg.addColorStop(1, "rgb(130,128,96)"); g.fillStyle = fg; g.fill();
-  g.strokeStyle = "rgba(110,100,70,0.7)"; g.lineWidth = 0.3; g.stroke();
-  for (const s of [-1, 1]) { g.beginPath(); g.ellipse(s * 2, -1.6, 1.3, 1.8 + open * 0.3, s * 0.15, 0, TAU); g.fillStyle = "rgb(96,90,70)"; g.fill(); g.beginPath(); g.arc(s * 2, -1.2, 0.4, 0, TAU); g.fillStyle = "rgb(30,28,30)"; g.fill(); }
-  g.fillStyle = "rgb(90,80,60)"; for (const s of [-1, 1]) { g.beginPath(); g.ellipse(s * 0.5, 1.6, 0.3, 0.5, 0, 0, TAU); g.fill(); }
-  g.beginPath(); g.ellipse(0, 5, 1.3 + open * 0.3, 1 + open * 1.6, 0, 0, TAU); g.fillStyle = "rgb(40,30,30)"; g.fill();
-  // hands clasped over the ears
+  g.restore();
+  // a thin neck rising out of the collar
+  const hx = fx + wave(60), hy = 58, open = 0.4 + scream.mouth * 0.6 + sw * 0.3;
+  tube([[X(fx + wave(67)), Y(67)], [X(hx), Y(hy + 5)]], [u * 3, u * 2.4], SK, [-0.7, -0.7], u * 0.25);
+  // arms bent up, elbows out, hands pressed to the head
+  for (const s of [-1, 1]) tube([[X(fx + s * 3.6 + wave(67)), Y(67.5)], [X(fx + s * 7.4 + wave(64)), Y(66)], [X(hx + s * 6.2), Y(hy + 3.4)], [X(hx + s * 4.4), Y(hy + 1.4)]], [u * 3.2, u * 2.8, u * 2.3, u * 2], ROBE, [-0.7, -0.7], u * 0.3);
+  // the head: a bald skull, temples sunken, the cheeks drawn in by the scream
+  g.save(); g.translate(X(hx), Y(hy)); g.rotate(wave(55) * 0.02); g.scale(u * 0.82, u * 0.82);
+  const head = () => { g.beginPath(); g.moveTo(0, -9.5); g.bezierCurveTo(5.4, -9.6, 6.4, -4, 5.2, 0.5); g.bezierCurveTo(4.6, 3, 3.6, 5.6, 2.6, 7.6); g.quadraticCurveTo(1.4, 10, 0, 10); g.quadraticCurveTo(-1.4, 10, -2.6, 7.6); g.bezierCurveTo(-3.6, 5.6, -4.6, 3, -5.2, 0.5); g.bezierCurveTo(-6.4, -4, -5.4, -9.6, 0, -9.5); g.closePath(); };
+  g.strokeStyle = `rgb(${SK.line})`; g.lineWidth = 0.4; head(); g.stroke();
+  paintedFill(head, SK.light, SK.dark, 1.5, 84, 120, 1, -4, -9, 4, 9);
+  g.save(); head(); g.clip();
+  const shade = (x, y, rx, ry, a, col) => { g.beginPath(); g.ellipse(x, y, rx, ry, a, 0, TAU); g.fillStyle = col; g.fill(); };
   for (const s of [-1, 1]) {
-    g.beginPath(); g.moveTo(s * 4.4, -3); g.quadraticCurveTo(s * 6.6, -1, s * 6, 3.5); g.quadraticCurveTo(s * 5, 6, s * 3.6, 5.4); g.quadraticCurveTo(s * 4.4, 1, s * 4.4, -3); g.closePath();
-    g.fillStyle = "rgb(210,190,132)"; g.fill(); g.strokeStyle = "rgba(110,100,70,0.8)"; g.lineWidth = 0.25; g.stroke();
-    for (let f = 0; f < 3; f++) { g.beginPath(); g.moveTo(s * (4.6 + f * 0.4), -2 + f * 0.6); g.lineTo(s * (4.1 + f * 0.3), -4.4 + f * 0.7); g.stroke(); }
+    shade(s * 4.4, -2.6, 1.4, 2.8, s * 0.2, "rgba(110,120,80,0.45)"); // sunken temples, a little green
+    shade(s * 3, 3.6, 1.1, 2.6, -s * 0.25, "rgba(120,110,74,0.5)"); // hollow cheeks
+  }
+  shade(0, -6, 3.6, 1.6, 0, "rgba(250,238,196,0.5)"); // light on the crown
+  g.restore();
+  for (const s of [-1, 1]) { // wide, staring eyes in deep sockets
+    shade(s * 2.1, -1.8, 1.6, 2 + open * 0.3, s * 0.15, "rgb(104,94,64)");
+    shade(s * 2.1, -1.6, 0.9, 1.1 + open * 0.2, 0, "rgb(190,178,134)");
+    shade(s * 2.1, -1.5, 0.45, 0.5, 0, "rgb(26,24,26)");
+  }
+  g.fillStyle = "rgb(80,70,50)"; for (const s of [-1, 1]) { g.beginPath(); g.ellipse(s * 0.55, 1.9, 0.28, 0.55, s * 0.3, 0, TAU); g.fill(); } // nostrils
+  g.beginPath(); g.ellipse(0, 5.4, 1.2 + open * 0.35, 0.9 + open * 1.5, 0, 0, TAU); g.fillStyle = "rgb(150,110,80)"; g.fill(); // lips
+  g.beginPath(); g.ellipse(0, 5.5, 0.9 + open * 0.3, 0.6 + open * 1.35, 0, 0, TAU); g.fillStyle = "rgb(36,24,22)"; g.fill(); // the open mouth
+  // two long hands clamped over the ears, fingers spread up the sides of the skull
+  for (const s of [-1, 1]) {
+    const palm = () => { g.beginPath(); g.moveTo(s * 4.2, -1.2); g.quadraticCurveTo(s * 6.8, -0.6, s * 6.8, 2.8); g.quadraticCurveTo(s * 6.2, 6.2, s * 4.2, 6.6); g.quadraticCurveTo(s * 3.4, 3.4, s * 4.2, -1.2); g.closePath(); };
+    g.strokeStyle = `rgb(${SK.line})`; g.lineWidth = 0.35; palm(); g.stroke();
+    paintedFill(palm, SK.light, SK.dark, 1.5, 85 + s, 30, 0.7, s * 4, -1, s * 6.6, 6);
+    for (let f = 0; f < 4; f++) tube([[s * (4.6 + f * 0.55), -0.6 + f * 0.25], [s * (4.4 + f * 0.6), -3.4 + f * 0.6], [s * (4 + f * 0.65), -5.6 + f * 0.9]], [0.95, 0.85, 0.7], SK, [-0.7, -0.7], 0.14);
+    tube([[s * 4.3, 5.2], [s * 3.2, 4.2], [s * 2.6, 2.8]], [1, 0.9, 0.75], SK, [-0.7, -0.7], 0.14); // thumb along the jaw
   }
   g.restore();
   g.globalCompositeOperation = "multiply"; blit(scream.grain, x0, y0); g.globalCompositeOperation = "source-over";
@@ -2451,22 +2546,24 @@ function chapelScene(t, dt, box) {
     g.beginPath(); g.moveTo(0, -fh); g.bezierCurveTo(fw * 1.4, -fh * 0.4, fw * 1.2, fh * 0.15, 0, fh * 0.15); g.bezierCurveTo(-fw * 1.2, fh * 0.15, -fw * 1.4, -fh * 0.4, 0, -fh); g.fillStyle = c; g.fill();
   }
   g.restore();
-  // the music box: an old wooden box, lid open, a tiny dancer turning on top
-  const bx = X(42), by = Y(SILL);
-  paintedFill(() => { g.beginPath(); g.moveTo(bx - 4.6 * u, by); g.lineTo(bx + 4.6 * u, by); g.lineTo(bx + 4.2 * u, by - 3.6 * u); g.lineTo(bx - 4.2 * u, by - 3.6 * u); g.closePath(); }, [130, 76, 44], [56, 30, 20], 0, 100, 60, u, bx - 4 * u, by - 4 * u, bx + 4 * u, by);
-  g.strokeStyle = "rgb(200,160,80)"; g.lineWidth = u * 0.25; g.strokeRect(bx - 3.4 * u, by - 2.8 * u, 6.8 * u, 2 * u);
-  paintedFill(() => { g.beginPath(); g.moveTo(bx - 4.2 * u, by - 3.6 * u); g.lineTo(bx + 4.2 * u, by - 3.6 * u); g.lineTo(bx + 4.8 * u, by - 9.4 * u); g.lineTo(bx - 3.6 * u, by - 9.4 * u); g.closePath(); }, [110, 62, 36], [50, 28, 18], 0, 101, 40, u, bx, by - 9 * u, bx, by - 4 * u); // open lid
-  g.beginPath(); g.moveTo(bx - 3.4 * u, by - 4.2 * u); g.lineTo(bx + 3.4 * u, by - 4.2 * u); g.lineTo(bx + 3.9 * u, by - 8.8 * u); g.lineTo(bx - 2.9 * u, by - 8.8 * u); g.closePath();
-  const mg = g.createLinearGradient(bx - 3 * u, by - 9 * u, bx + 3 * u, by - 4 * u); mg.addColorStop(0, "rgb(150,160,180)"); mg.addColorStop(0.5, "rgb(70,76,96)"); mg.addColorStop(1, "rgb(130,136,156)"); g.fillStyle = mg; g.fill(); // its little mirror
-  const turn = Math.cos(chapel.spin), dx = bx, dy = by - 3.6 * u;
-  g.save(); g.translate(dx, dy); g.scale(0.35 + Math.abs(turn) * 0.65, 1);
-  g.fillStyle = "rgb(200,170,90)"; g.fillRect(-0.15 * u, -1 * u, 0.3 * u, 1 * u); // the post
-  g.beginPath(); g.ellipse(0, -2.4 * u, 1.6 * u, 0.45 * u, 0, 0, TAU); g.fillStyle = "rgb(240,226,226)"; g.fill(); // tutu
-  g.strokeStyle = "rgb(236,206,190)"; g.lineWidth = u * 0.25; g.beginPath(); g.moveTo(0, -1 * u); g.lineTo(0, -2.4 * u); g.stroke();
-  g.beginPath(); g.ellipse(0, -3.3 * u, 0.4 * u, 0.9 * u, 0, 0, TAU); g.fillStyle = "rgb(236,206,206)"; g.fill(); // body
-  g.beginPath(); g.moveTo(-0.3 * u, -3.9 * u); g.quadraticCurveTo(-1.2 * turn * u, -5.4 * u, 0, -5.6 * u); g.quadraticCurveTo(1.2 * turn * u, -5.4 * u, 0.3 * u, -3.9 * u); g.lineWidth = u * 0.18; g.stroke(); // arms above her head
-  g.beginPath(); g.arc(0, -4.6 * u, 0.42 * u, 0, TAU); g.fillStyle = "rgb(240,214,200)"; g.fill();
-  g.restore();
+  // a gilded cross standing on the sill: it catches the candlelight, and its jewel glows with each note
+  const bx = X(42), by = Y(SILL), cu = u, glowN = Math.min(1, chapel.rose.petals.reduce((m, p) => Math.max(m, p.glow), 0));
+  g.globalCompositeOperation = "lighter";
+  const halo = g.createRadialGradient(bx, by - 9 * cu, 0, bx, by - 9 * cu, 9 * cu); halo.addColorStop(0, `rgba(255,214,140,${0.12 + glowN * 0.18})`); halo.addColorStop(1, "rgba(255,214,140,0)");
+  g.fillStyle = halo; g.beginPath(); g.arc(bx, by - 9 * cu, 9 * cu, 0, TAU); g.fill();
+  g.globalCompositeOperation = "source-over";
+  const gold = (x1, y1, x2, y2) => { const gg = g.createLinearGradient(x1, y1, x2, y2); gg.addColorStop(0, "rgb(255,226,140)"); gg.addColorStop(0.45, "rgb(206,150,58)"); gg.addColorStop(1, "rgb(110,70,24)"); return gg; };
+  for (const [w2, h2, y2] of [[4.6, 0.9, 0], [3.4, 0.9, 0.9], [2.2, 0.8, 1.8]]) { g.fillStyle = gold(bx - w2 * cu, by - (y2 + h2) * cu, bx + w2 * cu, by - y2 * cu); g.fillRect(bx - w2 * cu, by - (y2 + h2) * cu, w2 * 2 * cu, h2 * cu); g.strokeStyle = "rgba(70,40,10,0.7)"; g.lineWidth = 1; g.strokeRect(bx - w2 * cu, by - (y2 + h2) * cu, w2 * 2 * cu, h2 * cu); } // stepped base
+  const crossPath = () => { // a cross with flared, trefoil ends
+    const sw = 0.75 * cu, top = by - 17 * cu, mid = by - 12.5 * cu, arm = 4.2 * cu, bot = by - 2.6 * cu;
+    g.beginPath(); g.moveTo(bx - sw, bot); g.lineTo(bx - sw, mid + sw); g.lineTo(bx - arm, mid + sw); g.lineTo(bx - arm, mid - sw); g.lineTo(bx - sw, mid - sw); g.lineTo(bx - sw, top); g.lineTo(bx + sw, top); g.lineTo(bx + sw, mid - sw); g.lineTo(bx + arm, mid - sw); g.lineTo(bx + arm, mid + sw); g.lineTo(bx + sw, mid + sw); g.lineTo(bx + sw, bot); g.closePath();
+    for (const [ex, ey] of [[bx, top], [bx - arm, mid], [bx + arm, mid]]) for (let k = -1; k <= 1; k++) { const a = Math.atan2(ey - mid, ex - bx) + k * 0.9 || (ey < mid ? -Math.PI / 2 + k * 0.9 : 0); g.moveTo(ex + Math.cos(a) * 1.3 * cu + 1.1 * cu, ey + Math.sin(a) * 1.3 * cu); g.arc(ex + Math.cos(a) * 1.3 * cu, ey + Math.sin(a) * 1.3 * cu, 1.1 * cu, 0, TAU); }
+  };
+  g.fillStyle = gold(bx - 4 * cu, by - 17 * cu, bx + 4 * cu, by - 3 * cu); crossPath(); g.fill("nonzero");
+  g.strokeStyle = "rgba(90,52,14,0.8)"; g.lineWidth = Math.max(1, cu * 0.25); crossPath(); g.stroke();
+  g.strokeStyle = "rgba(255,240,190,0.75)"; g.lineWidth = cu * 0.25; g.beginPath(); g.moveTo(bx - 0.35 * cu, by - 16.5 * cu); g.lineTo(bx - 0.35 * cu, by - 3 * cu); g.moveTo(bx - 3.8 * cu, by - 12.9 * cu); g.lineTo(bx + 3.8 * cu, by - 12.9 * cu); g.stroke(); // candlelight along its edges
+  g.beginPath(); g.arc(bx, by - 12.5 * cu, 1 * cu, 0, TAU); g.fillStyle = `rgb(${mixc([140, 16, 30], [255, 120, 120], glowN * 0.6).map(Math.round)})`; g.fill(); // the jewel
+  g.beginPath(); g.arc(bx - 0.3 * cu, by - 12.8 * cu, 0.3 * cu, 0, TAU); g.fillStyle = "rgba(255,240,240,0.9)"; g.fill();
   g.globalCompositeOperation = "multiply"; blit(chapel.grain, x0, y0); g.globalCompositeOperation = "source-over";
   g.restore();
 }
