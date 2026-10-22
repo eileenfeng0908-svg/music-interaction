@@ -406,26 +406,80 @@ function fieldSetup() {
 // ---------- the pig ----------
 // Any glTF/GLB model works: it is scaled to a real pig's length, stood in the water facing us,
 // and its skin made wet (a clear film of water over its own textures).
-// pig skin for models that come without textures: pink, mottled, finely wrinkled, soaked
-const PIG_SKIN = `
+// pig skin for models that come without textures: pink-grey, mottled, wrinkled, pored, muddy legs, soaked.
+// The body also breathes, shivers when the music swells, and glows red at the edges where the light
+// behind shines through thin skin (ears, belly, legs).
+const PIG_U = { uBreath: { value: 0 }, uShiver: { value: 0 }, uTime: { value: 0 }, uLv: { value: null }, uSSS: { value: 0.3 } };
+const PIG_NOISE = `
 float pn3(vec3 p){ vec3 i = floor(p), f = fract(p); f = f * f * (3. - 2. * f);
   float n = dot(i, vec3(1., 57., 113.));
   vec4 a = fract(sin(vec4(n, n + 1., n + 57., n + 58.)) * 43758.5453), b = fract(sin(vec4(n + 113., n + 114., n + 170., n + 171.)) * 43758.5453);
   vec4 m = mix(a, b, f.z); vec2 m2 = mix(m.xy, m.zw, f.y); return mix(m2.x, m2.y, f.x); }
+float pf3(vec3 p){ return pn3(p) * 0.5 + pn3(p * 2.03 + 5.) * 0.3 + pn3(p * 4.1 + 9.) * 0.2; }
+uniform float uBreath, uShiver, uTime, uSSS; uniform vec3 uLv;
 varying vec3 vObj;`;
 function pigSkin(m) {
   m.onBeforeCompile = sh => {
-    sh.vertexShader = sh.vertexShader.replace("#include <common>", "#include <common>\nvarying vec3 vObj;").replace("#include <begin_vertex>", "#include <begin_vertex>\nvObj = position;");
-    sh.fragmentShader = sh.fragmentShader.replace("#include <common>", "#include <common>\n" + PIG_SKIN)
+    Object.assign(sh.uniforms, PIG_U);
+    sh.vertexShader = sh.vertexShader.replace("#include <common>", "#include <common>\n" + PIG_NOISE)
+      .replace("#include <begin_vertex>", `#include <begin_vertex>
+        vObj = position;
+        // ribs and belly rise and fall (the model stands along y, height along z)
+        float torso = smoothstep(-0.8, -0.45, position.y) * smoothstep(0.45, 0.1, position.y) * smoothstep(0.15, 0.4, position.z) * smoothstep(0.85, 0.55, position.z);
+        transformed += objectNormal * torso * uBreath;
+        // a shiver runs over the skin
+        transformed += objectNormal * (pn3(position * 35. + vec3(0., 0., uTime * 38.)) - .5) * 0.007 * uShiver;`);
+    sh.fragmentShader = sh.fragmentShader.replace("#include <common>", "#include <common>\n" + PIG_NOISE)
       .replace("#include <map_fragment>", `#include <map_fragment>
-        float pa = pn3(vObj * 5.), pb = pn3(vObj * 26.), pc = pn3(vObj * 140.);
-        vec3 skin = mix(vec3(0.60, 0.33, 0.29), vec3(0.80, 0.52, 0.45), pa);
-        skin = mix(skin, vec3(0.38, 0.25, 0.25), smoothstep(0.62, 0.9, pn3(vObj * 2.6 + 7.)) * 0.55);
-        skin *= 0.86 + 0.14 * pb;
-        diffuseColor.rgb = skin * 0.6;`)
-      .replace("#include <roughnessmap_fragment>", "#include <roughnessmap_fragment>\nroughnessFactor = mix(0.22, 0.5, pc * pb);")
-      .replace("#include <normal_fragment_maps>", "#include <normal_fragment_maps>\nnormal = normalize(normal + (vec3(pn3(vObj * 160.), pn3(vObj * 160. + 3.), pn3(vObj * 160. + 9.)) - .5) * 0.12);");
+        float pa = pf3(vObj * 4.), pb = pn3(vObj * 30.), pc = pn3(vObj * 220.);
+        vec3 skin = mix(vec3(0.56, 0.34, 0.31), vec3(0.78, 0.52, 0.46), pa);                     // pink, uneven
+        skin = mix(skin, vec3(0.42, 0.33, 0.33), smoothstep(0.55, 0.85, pf3(vObj * 1.8 + 7.)) * 0.6);   // grey patches
+        skin = mix(skin, vec3(0.70, 0.30, 0.27), smoothstep(0.6, 0.9, pf3(vObj * 9. + 3.)) * 0.35);    // flushed blotches
+        float folds = pow(abs(sin(vObj.y * 90. + pf3(vObj * 6.) * 8.)), 6.) * smoothstep(0.4, 0.2, abs(vObj.z - 0.55));
+        skin *= 1. - folds * 0.18;                                                                  // wrinkles across the neck and flanks
+        skin *= 1. - smoothstep(0.72, 0.8, pc) * 0.35;                                                 // pores
+        float mud = smoothstep(0.32, 0.08, vObj.z + (pf3(vObj * 7.) - .5) * 0.12);                     // legs and belly caked in wet mud
+        skin = mix(skin, vec3(0.13, 0.09, 0.06) * (0.7 + 0.6 * pb), mud * 0.85);
+        diffuseColor.rgb = skin * 0.62;`)
+      .replace("#include <roughnessmap_fragment>", "#include <roughnessmap_fragment>\nroughnessFactor = mix(0.3, 0.55, pb) - mud * 0.12 + folds * 0.1;")
+      .replace("#include <normal_fragment_maps>", `#include <normal_fragment_maps>
+        vec3 bmp = vec3(pn3(vObj * 180.), pn3(vObj * 180. + 3.), pn3(vObj * 180. + 9.)) - .5;
+        vec3 bmp2 = vec3(pn3(vObj * 40.), pn3(vObj * 40. + 3.), pn3(vObj * 40. + 9.)) - .5;
+        normal = normalize(normal + bmp * 0.1 + bmp2 * 0.08 + bmp2 * folds * 0.4);`)
+      .replace("#include <emissivemap_fragment>", `#include <emissivemap_fragment>
+        vec3 Vv = normalize(vViewPosition);
+        float back = pow(max(dot(-Vv, uLv), 0.), 2.), edge = 1. - abs(dot(normal, Vv));
+        totalEmissiveRadiance += vec3(0.95, 0.24, 0.16) * back * pow(edge, 2.5) * uSSS * (1. - mud);`);
   };
+}
+// bristles: sparse pale hairs over the body; invisible face-on, a glowing fuzz where the light comes from behind
+function pigBristles(mesh) {
+  const T = THREE, P = mesh.geometry.attributes.position, Nn = mesh.geometry.attributes.normal, n = 16000;
+  const pos = new Float32Array(n * 6), tip = new Float32Array(n * 2), nor = new Float32Array(n * 6);
+  const a = new T.Vector3(), b = new T.Vector3();
+  for (let i = 0; i < n; i++) {
+    const k = Math.floor(Math.random() * P.count);
+    a.fromBufferAttribute(P, k); b.fromBufferAttribute(Nn, k);
+    if (a.z < 0.12) { i--; continue; }                       // not on the muddy feet
+    const len = 0.012 + Math.random() * 0.02;
+    const d = b.clone().multiplyScalar(0.55).add(new T.Vector3((Math.random() - .5) * 0.4, 0.75, -0.25)).normalize(); // lying back along the body
+    pos.set([a.x, a.y, a.z, a.x + d.x * len, a.y + d.y * len, a.z + d.z * len], i * 6);
+    tip.set([0, 1], i * 2); nor.set([b.x, b.y, b.z, b.x, b.y, b.z], i * 6);
+  }
+  const g = new T.BufferGeometry();
+  g.setAttribute("position", new T.BufferAttribute(pos, 3)); g.setAttribute("tip", new T.BufferAttribute(tip, 1)); g.setAttribute("normal", new T.BufferAttribute(nor, 3));
+  const lines = new T.LineSegments(g, new T.ShaderMaterial({
+    uniforms: { uLight: FIELD.U.uLight, uLightCol: FIELD.U.uLightCol, uLightI: FIELD.U.uLightI, uFlash: FIELD.U.uFlash },
+    vertexShader: `attribute float tip; varying float vA; uniform vec3 uLight; uniform float uLightI, uFlash;
+      void main(){ vec4 w = modelMatrix * vec4(position, 1.); vec3 v = normalize(w.xyz - cameraPosition), L = normalize(uLight - w.xyz);
+        vec3 nw = normalize(mat3(modelMatrix) * normal); float edge = pow(1. - abs(dot(nw, v)), 4.);   // only along the outline
+        vA = (1.4 * pow(max(dot(v, L), 0.), 3.) * uLightI + uFlash * 0.3) * edge * (0.3 + 0.7 * tip);
+        gl_Position = projectionMatrix * viewMatrix * w; }`,
+    fragmentShader: `varying float vA; uniform vec3 uLightCol; void main(){ gl_FragColor = vec4(mix(vec3(1., 0.9, 0.78), uLightCol, 0.5) * vA * 0.3, 1.); }`,
+    transparent: true, blending: T.AdditiveBlending, depthWrite: false
+  }));
+  lines.frustumCulled = false;
+  mesh.add(lines);
 }
 function loadPig(url) {
   if (!rainReady() || !THREE.GLTFLoader) return;
@@ -451,7 +505,7 @@ function loadPig(url) {
         envMapIntensity: 0.9, vertexColors: !!old.vertexColors
       });
       if (old.normalScale) m.normalScale.copy(old.normalScale);
-      if (!old.map) { m.color.set(1, 1, 1); pigSkin(m); }
+      if (!old.map) { m.color.set(1, 1, 1); pigSkin(m); if (o.geometry.attributes.normal && !o.isSkinnedMesh) pigBristles(o); }
       m.side = THREE.DoubleSide;
       o.material = m;
     });
@@ -513,7 +567,16 @@ function fieldScene(t, dt, box) {
   FIELD.beam.rotation.set(0.35 + Math.sin(t * 0.07) * 0.08, 0, -0.9 + Math.sin(t * 0.045) * 0.7);
   FIELD.mists.forEach(m => m.quaternion.copy(cam.quaternion));
   if (FIELD.mixer) FIELD.mixer.update(dt);
-  if (FIELD.pig) { const b = 1 + Math.sin(t * 1.4) * 0.006; FIELD.pig.scale.y = FIELD.pig.scale.x * b; }
+  if (FIELD.pig) {
+    // breathing: slow when calm, quicker and deeper as the music grows
+    FIELD.breathPh = (FIELD.breathPh || 0) + dt * (1.1 + lv * 1.1);
+    PIG_U.uBreath.value = (0.5 + 0.5 * Math.sin(FIELD.breathPh)) * (0.012 + lv * 0.01);
+    // a swell or a lightning flash sends a shiver through the body
+    FIELD.shiver = Math.max((FIELD.shiver || 0) * Math.pow(0.15, dt), RAIN.onset > 0.3 ? Math.min(1, RAIN.onset * 1.5) : 0, RAIN.flash > 0.5 ? 0.8 : 0);
+    PIG_U.uShiver.value = FIELD.shiver; PIG_U.uTime.value = t;
+    FIELD.pig.rotation.z = Math.sin(t * 47) * 0.004 * FIELD.shiver;
+    PIG_U.uSSS.value = 0.18 + lv * 0.25;
+  }
   // the camera: low in the water, slowly closing in, breathing like a handheld shot
   const ang = Math.sin(t * 0.043) * 0.2 + 0.06, rad = 4.6 - 0.6 * (0.5 + 0.5 * Math.sin(t * 0.029)) - lv * 0.25;
   cam.aspect = f.pw / f.ph; cam.updateProjectionMatrix();
@@ -532,6 +595,7 @@ function fieldScene(t, dt, box) {
   r.setRenderTarget(RAIN.refl); r.render(scene, vc);
   FIELD.water.visible = true; FIELD.rainMesh.visible = true;
   U.tRefl.value = RAIN.refl.texture;
+  PIG_U.uLv.value = L.clone().sub(cam.position).normalize().transformDirection(cam.matrixWorldInverse);
   r.setRenderTarget(RAIN.rt); r.render(scene, cam);
   const lp = L.clone().project(cam);
   rainFinish(t, { th: 0.35, aper: 0.55, focus: cam.position.length(), near: cam.near, far: cam.far, rays: 0.45 + lv * 0.4,
