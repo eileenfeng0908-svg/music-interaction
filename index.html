@@ -106,7 +106,7 @@ const ROOMS = [
       { sound: "generated", make: "nami",      art: "koi" },
       { sound: "generated", make: "sakura",    art: "eisho" }
   ] },
-  { label: "?", pieces: [{ sound: "generated", make: "endless", art: "blank" }] } // music that keeps changing; the wall stays empty
+  { label: "?", pieces: [{ sound: "generated", make: "endless", art: "mist" }] } // music that keeps changing; the wall stays empty
 ];
 let roomIndex = 0, pieceIndex = 0;
 
@@ -3224,6 +3224,196 @@ function blankScene(t, dt, box) {
   g.beginPath(); g.arc(cx, cy, r, 0, TAU); g.strokeStyle = `rgba(42,44,42,${0.12 + S.mid * 0.2})`; g.lineWidth = 0.8; g.stroke();
 }
 
+// --- The "?" wall: living watercolour. Pigment floats in water on textured paper: it blooms where the beat drops it,
+// bleeds and feathers as the water spreads, gathers into darker rims and settles into the grain as it dries.
+// Colours mix the way paint does (each layer absorbs light), and the palette drifts with the mood of the music. ---
+const WC = { gl: null, cv: null, ok: true, P: {}, w: 0, h: 0, brushes: [], flecks: [], pal: null, palName: "", t: 0, energy: 0, bright: 0.5, lastBloom: 0 };
+// pigment colours as they look painted thinly on white paper, one set per kind of music
+const WC_PALETTES = {
+  ambient: [[110, 150, 200], [160, 140, 200], [120, 180, 180], [200, 190, 220]],
+  lofi: [[170, 130, 110], [90, 140, 150], [200, 170, 140], [120, 110, 140]],
+  house: [[190, 80, 140], [70, 80, 170], [120, 60, 150], [230, 140, 170]],
+  bossa: [[240, 160, 120], [90, 170, 150], [240, 200, 120], [200, 110, 100]],
+  waltz: [[220, 140, 160], [210, 180, 110], [170, 120, 160], [240, 200, 200]],
+  jig: [[110, 150, 90], [150, 120, 170], [190, 170, 100], [90, 130, 140]],
+  chip: [[250, 150, 170], [130, 200, 230], [250, 220, 120], [170, 220, 160]],
+  phase: [[60, 160, 170], [240, 130, 110], [240, 200, 160], [120, 190, 200]],
+  raga: [[240, 160, 50], [60, 70, 150], [200, 80, 80], [250, 210, 120]],
+  blues: [[50, 80, 170], [170, 90, 60], [110, 130, 180], [200, 150, 110]],
+  gamelan: [[180, 140, 70], [70, 150, 120], [150, 90, 60], [200, 190, 130]],
+  lullaby: [[240, 180, 200], [160, 200, 240], [250, 230, 190], [200, 180, 230]],
+  synthwave: [[160, 80, 180], [240, 110, 150], [80, 90, 180], [250, 170, 150]],
+  maqam: [[60, 170, 170], [200, 110, 70], [230, 190, 120], [70, 110, 160]]
+};
+function wcSetup() {
+  const cv = document.createElement("canvas"), gl = cv.getContext("webgl2", { alpha: false, antialias: false, premultipliedAlpha: false });
+  if (!gl || !gl.getExtension("EXT_color_buffer_float")) { WC.ok = false; return; }
+  const VERT = `#version 300 es
+    precision highp float; in vec2 aPos; uniform vec2 texel; out vec2 vUv, vL, vR, vT, vB;
+    void main() { vUv = aPos * 0.5 + 0.5; vL = vUv - vec2(texel.x, 0.0); vR = vUv + vec2(texel.x, 0.0); vT = vUv + vec2(0.0, texel.y); vB = vUv - vec2(0.0, texel.y); gl_Position = vec4(aPos, 0.0, 1.0); }`;
+  const HEAD = `#version 300 es
+    precision highp float; precision highp sampler2D; in vec2 vUv, vL, vR, vT, vB; out vec4 o;
+    float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+    float vnoise(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
+      return mix(mix(hash(i), hash(i + vec2(1, 0)), f.x), mix(hash(i + vec2(0, 1)), hash(i + vec2(1, 1)), f.x), f.y); }
+    float fbm(vec2 p) { float s = 0.0, a = 0.5; for (int k = 0; k < 5; k++) { s += a * vnoise(p); p = p * 2.03 + 7.1; a *= 0.5; } return s; }
+    uniform vec2 paperScale;
+    // the paper: cold-pressed tooth plus long fibres; 0 in the hollows, 1 on the ridges
+    float paper(vec2 uv) { vec2 p = uv * paperScale; return clamp(0.55 * fbm(p * 0.09) + 0.35 * vnoise(p * 0.5) + 0.1 * vnoise(vec2(p.x * 0.05, p.y * 1.3)), 0.0, 1.0); }
+  `;
+  const SH = {
+    // a soft drop of water and pigment, its edge broken up so no two drops are round
+    splat: `uniform sampler2D uT; uniform float aspect, radius, seed, ragged, plateau; uniform vec4 value; uniform vec2 point;
+      void main() { vec2 p = vUv - point; p.x *= aspect; float d = dot(p, p) / radius;
+        float n = fbm(vUv * 9.0 + seed) - 0.5, dn = d * (1.0 + ragged * n * 2.2);
+        float e = mix(exp(-dn * 1.5), smoothstep(1.15, 0.75, dn) * (0.75 + 0.5 * fbm(vUv * 30.0 + seed)), plateau); // a pool of water has an edge
+        o = texture(uT, vUv) + value * e; }`,
+    advect: `uniform sampler2D uVel, uSrc, uInk; uniform vec2 texel; uniform float dt, keep, dryDrag;
+      void main() { vec2 back = vUv - dt * texture(uVel, vUv).xy * texel; vec4 v = texture(uSrc, back) * keep;
+        float w = clamp(texture(uInk, vUv).a * 3.0, 0.0, 1.0); o = v * mix(dryDrag, 1.0, w); }`,
+    divergence: `uniform sampler2D uVel;
+      void main() { float L = texture(uVel, vL).x, R = texture(uVel, vR).x, T = texture(uVel, vT).y, B = texture(uVel, vB).y; vec2 C = texture(uVel, vUv).xy;
+        if (vL.x < 0.0) L = -C.x; if (vR.x > 1.0) R = -C.x; if (vT.y > 1.0) T = -C.y; if (vB.y < 0.0) B = -C.y; o = vec4(0.5 * (R - L + T - B), 0.0, 0.0, 1.0); }`,
+    curl: `uniform sampler2D uVel;
+      void main() { float L = texture(uVel, vL).y, R = texture(uVel, vR).y, T = texture(uVel, vT).x, B = texture(uVel, vB).x; o = vec4(0.5 * (R - L - T + B), 0.0, 0.0, 1.0); }`,
+    vorticity: `uniform sampler2D uVel, uCurl; uniform float swirl, dt;
+      void main() { float L = texture(uCurl, vL).x, R = texture(uCurl, vR).x, T = texture(uCurl, vT).x, B = texture(uCurl, vB).x, C = texture(uCurl, vUv).x;
+        vec2 f = 0.5 * vec2(abs(T) - abs(B), abs(R) - abs(L)); f /= length(f) + 0.0001; f *= swirl * C; f.y *= -1.0; o = vec4(texture(uVel, vUv).xy + f * dt, 0.0, 1.0); }`,
+    pressure: `uniform sampler2D uP, uDiv;
+      void main() { float L = texture(uP, vL).x, R = texture(uP, vR).x, T = texture(uP, vT).x, B = texture(uP, vB).x; o = vec4((L + R + B + T - texture(uDiv, vUv).x) * 0.25, 0.0, 0.0, 1.0); }`,
+    gradient: `uniform sampler2D uP, uVel;
+      void main() { float L = texture(uP, vL).x, R = texture(uP, vR).x, T = texture(uP, vT).x, B = texture(uP, vB).x; o = vec4(texture(uVel, vUv).xy - vec2(R - L, T - B), 0.0, 1.0); }`,
+    scale: `uniform sampler2D uT; uniform float amount; void main() { o = amount * texture(uT, vUv); }`,
+    // the wet layer: water creeps outward through the paper fibres, carrying pigment, and slowly evaporates;
+    // as a patch dries its pigment leaves the water and settles (that part is taken out here and added to the dry layer)
+    wet: `uniform sampler2D uInk; uniform vec2 texel; uniform float dt, spread, evap;
+      void main() { vec4 c = texture(uInk, vUv); vec2 s = texel * 1.5;
+        vec4 n = (texture(uInk, vUv + vec2(s.x, 0)) + texture(uInk, vUv - vec2(s.x, 0)) + texture(uInk, vUv + vec2(0, s.y)) + texture(uInk, vUv - vec2(0, s.y))) * 0.25;
+        float fib = paper(vUv), w = clamp(c.a, 0.0, 1.0), wn = clamp(n.a, 0.0, 1.0);
+        float k = spread * dt * (0.35 + 0.9 * fib) * max(w, wn);           // water only travels where there is water
+        vec4 m = mix(c, n, clamp(k, 0.0, 0.5));
+        float grad = length(vec2(texture(uInk, vUv + vec2(s.x, 0)).a - texture(uInk, vUv - vec2(s.x, 0)).a, texture(uInk, vUv + vec2(0, s.y)).a - texture(uInk, vUv - vec2(0, s.y)).a));
+        float settle = dt * (0.06 + 1.6 * (1.0 - smoothstep(0.0, 0.18, w)) + 3.0 * grad) * (0.7 + 0.6 * (1.0 - fib));
+        m.rgb *= 1.0 - clamp(settle, 0.0, 0.9);
+        m.a = max(0.0, m.a * (1.0 - evap * dt) - 0.004 * dt);
+        o = m; }`,
+    dry: `uniform sampler2D uInk, uDry; uniform vec2 texel; uniform float dt, fade;
+      void main() { vec4 c = texture(uInk, vUv); vec2 s = texel * 1.5; float fib = paper(vUv), w = clamp(c.a, 0.0, 1.0);
+        float grad = length(vec2(texture(uInk, vUv + vec2(s.x, 0)).a - texture(uInk, vUv - vec2(s.x, 0)).a, texture(uInk, vUv + vec2(0, s.y)).a - texture(uInk, vUv - vec2(0, s.y)).a));
+        float settle = dt * (0.06 + 1.6 * (1.0 - smoothstep(0.0, 0.18, w)) + 3.0 * grad) * (0.7 + 0.6 * (1.0 - fib));
+        vec3 d = texture(uDry, vUv).rgb * (1.0 - fade * dt) + c.rgb * clamp(settle, 0.0, 0.9) * (0.75 + 0.5 * (1.0 - fib)); // more pigment lodges in the hollows: granulation
+        o = vec4(d, 1.0); }`,
+    // light passes through the layers of pigment and back off the paper
+    display: `uniform sampler2D uInk, uDry; uniform vec2 texel; uniform float grainSeed;
+      void main() { vec4 c = texture(uInk, vUv); vec3 dry = texture(uDry, vUv).rgb; float fib = paper(vUv);
+        vec2 s = texel * 2.0; float w = clamp(c.a, 0.0, 1.0);
+        float rim = length(vec2(texture(uInk, vUv + vec2(s.x, 0)).a - texture(uInk, vUv - vec2(s.x, 0)).a, texture(uInk, vUv + vec2(0, s.y)).a - texture(uInk, vUv - vec2(0, s.y)).a));
+        vec3 A = dry * 1.15 + c.rgb * (0.85 + rim * 3.5);
+        float edge = smoothstep(0.0, 0.05, vUv.x) * smoothstep(1.0, 0.95, vUv.x) * smoothstep(0.0, 0.05, vUv.y) * smoothstep(1.0, 0.95, vUv.y);
+        A *= edge;
+        vec3 page = vec3(0.941, 0.933, 0.894), base = page * mix(1.0, 0.975 + 0.04 * fib, edge); // the paper melts into the page at its edges
+        vec3 col = base * exp(-A);
+        col *= 1.0 - 0.035 * w * edge;                                   // wet paint is a touch darker
+        col += (hash(gl_FragCoord.xy + grainSeed) - 0.5) * 0.018 * edge; // fine grain
+        o = vec4(col, 1.0); }`
+  };
+  const compile = (type, src) => { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) console.error(gl.getShaderInfoLog(s)); return s; };
+  const vs = compile(gl.VERTEX_SHADER, VERT);
+  for (const [name, body] of Object.entries(SH)) {
+    const p = gl.createProgram(); gl.attachShader(p, vs); gl.attachShader(p, compile(gl.FRAGMENT_SHADER, HEAD + body)); gl.bindAttribLocation(p, 0, "aPos"); gl.linkProgram(p);
+    if (!gl.getProgramParameter(p, gl.LINK_STATUS)) { console.error(name, gl.getProgramInfoLog(p)); WC.ok = false; return; }
+    const u = {}; for (let i = 0; i < gl.getProgramParameter(p, gl.ACTIVE_UNIFORMS); i++) { const n = gl.getActiveUniform(p, i).name; u[n] = gl.getUniformLocation(p, n); }
+    WC.P[name] = { p, u };
+  }
+  gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer()); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
+  gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+  WC.gl = gl; WC.cv = cv;
+}
+function wcTarget(w, h) {
+  const gl = WC.gl, tex = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, tex);
+  for (const [k, v] of [[gl.TEXTURE_MIN_FILTER, gl.LINEAR], [gl.TEXTURE_MAG_FILTER, gl.LINEAR], [gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE], [gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE]]) gl.texParameteri(gl.TEXTURE_2D, k, v);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA16F, w, h, 0, gl.RGBA, gl.HALF_FLOAT, null);
+  const fb = gl.createFramebuffer(); gl.bindFramebuffer(gl.FRAMEBUFFER, fb); gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+  gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT);
+  return { tex, fb, w, h, texel: [1 / w, 1 / h] };
+}
+function wcPair(w, h) { return { read: wcTarget(w, h), write: wcTarget(w, h), swap() { [this.read, this.write] = [this.write, this.read]; } }; }
+function wcResize(W2, H2) {
+  WC.cv.width = W2; WC.cv.height = H2; WC.w = W2; WC.h = H2;
+  const grid = res => { const a = W2 / H2; const l = Math.round(res * (a < 1 ? 1 / a : a)); return a >= 1 ? [l, res] : [res, l]; };
+  const [sw, sh] = grid(144), [dw, dh] = grid(Math.min(560, Math.round(Math.min(W2, H2) * 0.6)));
+  Object.assign(WC, { vel: wcPair(sw, sh), pres: wcPair(sw, sh), div: wcTarget(sw, sh), curl: wcTarget(sw, sh), ink: wcPair(dw, dh), dry: wcPair(dw, dh) });
+}
+function wcUse(name) { const pr = WC.P[name]; WC.gl.useProgram(pr.p); const u = pr.u; if (u.paperScale) WC.gl.uniform2f(u.paperScale, WC.w / 2, WC.h / 2); return u; }
+function wcTex(t, unit) { const gl = WC.gl; gl.activeTexture(gl.TEXTURE0 + unit); gl.bindTexture(gl.TEXTURE_2D, t.tex); return unit; }
+function wcDraw(t) { const gl = WC.gl; if (t) { gl.bindFramebuffer(gl.FRAMEBUFFER, t.fb); gl.viewport(0, 0, t.w, t.h); } else { gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.viewport(0, 0, WC.w, WC.h); } gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4); }
+// drop water and pigment at x, y (0..1, y up), pushing it by dx, dy; pigment is given as the colour it paints
+function wcSplat(x, y, dx, dy, col, amount, radius, water, ragged = 0.6) {
+  const gl = WC.gl, aspect = WC.w / WC.h; let u = wcUse("splat");
+  gl.uniform1f(u.aspect, aspect); gl.uniform2f(u.point, x, y); gl.uniform1f(u.radius, radius * (aspect > 1 ? aspect : 1) * 0.6); gl.uniform1f(u.seed, Math.random() * 100); gl.uniform1f(u.ragged, ragged);
+  gl.uniform1f(u.plateau, 0); gl.uniform1i(u.uT, wcTex(WC.vel.read, 0)); gl.uniform4f(u.value, dx, dy, 0, 0); wcDraw(WC.vel.write); WC.vel.swap();
+  const ab = col.map(c => -Math.log(Math.max(0.04, c / 255)) * amount); // how much of each colour of light the pigment swallows
+  gl.uniform1f(u.plateau, 0.75); gl.uniform1f(u.radius, radius * (aspect > 1 ? aspect : 1)); gl.uniform1i(u.uT, wcTex(WC.ink.read, 0)); gl.uniform4f(u.value, ab[0], ab[1], ab[2], water); wcDraw(WC.ink.write); WC.ink.swap();
+}
+function wcStep(dt) {
+  const gl = WC.gl; let u;
+  u = wcUse("curl"); gl.uniform2fv(u.texel, WC.vel.read.texel); gl.uniform1i(u.uVel, wcTex(WC.vel.read, 0)); wcDraw(WC.curl);
+  u = wcUse("vorticity"); gl.uniform2fv(u.texel, WC.vel.read.texel); gl.uniform1i(u.uVel, wcTex(WC.vel.read, 0)); gl.uniform1i(u.uCurl, wcTex(WC.curl, 1)); gl.uniform1f(u.swirl, 4); gl.uniform1f(u.dt, dt); wcDraw(WC.vel.write); WC.vel.swap();
+  u = wcUse("divergence"); gl.uniform2fv(u.texel, WC.vel.read.texel); gl.uniform1i(u.uVel, wcTex(WC.vel.read, 0)); wcDraw(WC.div);
+  u = wcUse("scale"); gl.uniform1i(u.uT, wcTex(WC.pres.read, 0)); gl.uniform1f(u.amount, 0.8); wcDraw(WC.pres.write); WC.pres.swap();
+  u = wcUse("pressure"); gl.uniform2fv(u.texel, WC.vel.read.texel); gl.uniform1i(u.uDiv, wcTex(WC.div, 0));
+  for (let i = 0; i < 18; i++) { gl.uniform1i(u.uP, wcTex(WC.pres.read, 1)); wcDraw(WC.pres.write); WC.pres.swap(); }
+  u = wcUse("gradient"); gl.uniform2fv(u.texel, WC.vel.read.texel); gl.uniform1i(u.uP, wcTex(WC.pres.read, 0)); gl.uniform1i(u.uVel, wcTex(WC.vel.read, 1)); wcDraw(WC.vel.write); WC.vel.swap();
+  u = wcUse("advect"); gl.uniform2fv(u.texel, WC.vel.read.texel); gl.uniform1f(u.dt, dt); gl.uniform1i(u.uInk, wcTex(WC.ink.read, 2));
+  gl.uniform1i(u.uVel, wcTex(WC.vel.read, 0)); gl.uniform1i(u.uSrc, wcTex(WC.vel.read, 0)); gl.uniform1f(u.keep, Math.pow(0.35, dt)); gl.uniform1f(u.dryDrag, Math.pow(0.02, dt)); wcDraw(WC.vel.write); WC.vel.swap();
+  gl.uniform1i(u.uVel, wcTex(WC.vel.read, 0)); gl.uniform1i(u.uSrc, wcTex(WC.ink.read, 1)); gl.uniform1f(u.keep, 1); gl.uniform1f(u.dryDrag, 1); wcDraw(WC.ink.write); WC.ink.swap();
+  u = wcUse("dry"); gl.uniform2fv(u.texel, WC.ink.read.texel); gl.uniform1f(u.dt, dt); gl.uniform1f(u.fade, 0.05); gl.uniform1i(u.uInk, wcTex(WC.ink.read, 0)); gl.uniform1i(u.uDry, wcTex(WC.dry.read, 1)); wcDraw(WC.dry.write); WC.dry.swap();
+  u = wcUse("wet"); gl.uniform2fv(u.texel, WC.ink.read.texel); gl.uniform1f(u.dt, dt); gl.uniform1f(u.spread, 7); gl.uniform1f(u.evap, 0.22); gl.uniform1i(u.uInk, wcTex(WC.ink.read, 0)); wcDraw(WC.ink.write); WC.ink.swap();
+}
+function mistScene(t, dt, box) {
+  if (!WC.gl && WC.ok) wcSetup();
+  if (!WC.ok) return blankScene(t, dt, box);
+  const W2 = Math.round(Math.min(box.w * DPR, 1800)), H2 = Math.round(W2 * box.h / box.w);
+  if (WC.w !== W2 || WC.h !== H2) wcResize(W2, H2);
+  // the palette follows the music that is playing, and drifts there slowly
+  const target = WC_PALETTES[endlessNow] || WC_PALETTES.ambient;
+  if (!WC.pal) WC.pal = target.map(c => c.slice());
+  WC.pal.forEach((c, k) => { for (let j = 0; j < 3; j++) c[j] += (target[k][j] - c[j]) * Math.min(1, dt * 0.25); });
+  // how loud, and how bright (where the sound sits between low and high)
+  const e = (S.bass + S.mid + S.high) / 3; WC.energy += (e - WC.energy) * Math.min(1, dt * 2);
+  let num = 0, den = 0.0001; S.spec.forEach((v, i) => { num += v * i; den += v; }); WC.bright += (num / den / 15 - WC.bright) * Math.min(1, dt);
+  const playing = !!nowPlaying, pick2 = k => WC.pal[(k + 4) % 4];
+  // brushes: three wandering points of wet paint that follow the melody, trailing pigment in soft strokes
+  if (!WC.brushes.length) for (let k = 0; k < 3; k++) WC.brushes.push({ x: 0.3 + k * 0.2, y: 0.5, px: 0.5, py: 0.5, k, acc: 0 });
+  if (playing) WC.brushes.forEach(b => {
+    const sp = 0.05 + S.mid * 0.12, a = noise2(b.k * 10 + t * 0.07, t * 0.05) * TAU * 2;
+    b.px = b.x; b.py = b.y; b.x += Math.cos(a) * sp * dt; b.y += Math.sin(a) * sp * dt;
+    b.x += (0.5 - b.x) * dt * 0.05; b.y += (0.5 - b.y) * dt * 0.05;
+    b.acc += dt * (2 + S.mid * 14);
+    if (b.acc > 1 && S.mid > 0.12) { b.acc = 0; wcSplat(b.x, b.y, (b.x - b.px) / dt * 220, (b.y - b.py) / dt * 220, pick2(b.k + Math.round(WC.bright * 2)), 0.06 + S.mid * 0.12, 0.0006 + S.mid * 0.0012, 0.12, 0.8); }
+  });
+  // occasional quiet washes so the paper is never bare for long
+  if (playing && Math.random() < dt * 0.08) { const x = Math.random(), y = Math.random(), c = pick2(Math.floor(Math.random() * 4)); for (let k = 0; k < 4; k++) wcSplat(x + (Math.random() - 0.5) * 0.12, y + (Math.random() - 0.5) * 0.12, (Math.random() - 0.5) * 40, (Math.random() - 0.5) * 40, c, 0.05, 0.004 + Math.random() * 0.006, 0.5, 1); }
+  wcStep(Math.min(dt, 0.033));
+  const gl = WC.gl, u = wcUse("display"); gl.uniform2fv(u.texel, WC.ink.read.texel); gl.uniform1f(u.grainSeed, 0); gl.uniform1i(u.uInk, wcTex(WC.ink.read, 0)); gl.uniform1i(u.uDry, wcTex(WC.dry.read, 1)); wcDraw(null);
+  g.drawImage(WC.cv, box.x, box.y, box.w, box.h);
+  // flecks: tiny grains of pigment carried on the surface, drifting on slow currents, more when the music brightens
+  if (playing && WC.flecks.length < 320) for (let k = 0; k < (S.high * 40 + 2) * dt * 10; k++) { const b = WC.brushes[Math.floor(Math.random() * 3)]; WC.flecks.push({ x: b.x + (Math.random() - 0.5) * 0.15, y: b.y + (Math.random() - 0.5) * 0.15, life: 3 + Math.random() * 5, age: 0, s: 0.4 + Math.random() * 1.1, c: pick2(Math.floor(Math.random() * 4)) }); }
+  WC.flecks = WC.flecks.filter(f => (f.age += dt) < f.life);
+  WC.flecks.forEach(f => {
+    const a = noise2(f.x * 3 + t * 0.05, f.y * 3) * TAU * 2; f.x += Math.cos(a) * dt * 0.012; f.y += Math.sin(a) * dt * 0.012;
+    const fade = Math.min(1, f.age * 2, (f.life - f.age) * 0.7), cc = f.c.map(v => Math.round(v * 0.55));
+    g.beginPath(); g.arc(box.x + f.x * box.w, box.y + (1 - f.y) * box.h, f.s, 0, TAU); g.fillStyle = `rgba(${cc[0]},${cc[1]},${cc[2]},${0.45 * fade})`; g.fill();
+  });
+}
+// a beat drops a bloom of pigment-laden water; the louder the beat, the bigger and darker
+function mistBeat() {
+  if (!WC.gl || !WC.pal || time - WC.lastBloom < 0.35) return; WC.lastBloom = time;
+  const c = WC.pal[Math.floor(Math.random() * 4)], x = 0.15 + Math.random() * 0.7, y = 0.15 + Math.random() * 0.7, s = S.bass;
+  wcSplat(x, y, (Math.random() - 0.5) * 140, (Math.random() - 0.5) * 140, c, 0.16 + s * 0.3, 0.004 + s * 0.012, 0.9 + s * 0.6, 0.9);
+  if (Math.random() < 0.4) wcSplat(x + (Math.random() - 0.5) * 0.08, y + (Math.random() - 0.5) * 0.08, 0, 0, WC.pal[Math.floor(Math.random() * 4)], 0.2, 0.002, 0.6, 1);
+}
+
 const ARTS = {
   // segments: how many mirrored slices; drift: how far the slice wanders across the pattern
   medallion: { draw: medallion, segments: 8, drift: 0.09, zoom: 0.36 },
@@ -3241,7 +3431,8 @@ const ARTS = {
   kimono: { scene: kimonoScene },
   koi: { scene: koiScene },
   eisho: { scene: eishoScene },
-  blank: { scene: blankScene }
+  blank: { scene: blankScene },
+  mist: { scene: mistScene }
 };
 const K = { spin: 0, punch: 0 };
 function onBeat() {
@@ -3260,6 +3451,7 @@ function onBeat() {
   if (art === "kimono") kimonoBeat();
   if (art === "koi") koiBeat();
   if (art === "eisho") eishoBeat();
+  if (art === "mist") mistBeat();
   if (art === "manton") { manton.fr.v += manton.side * (1.4 + S.bass); manton.ang.v += manton.side * 0.6; manton.side *= -1; }
   if (art === "feria") { feria.wave = 0; feria.splash = 1; feria.palm.v += (Math.random() < 0.5 ? -1 : 1) * (0.6 + S.bass); }
 }
