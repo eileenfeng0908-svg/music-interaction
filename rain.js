@@ -421,6 +421,7 @@ function loadPig(url) {
     holder.scale.setScalar(k); holder.position.y = -0.04; holder.rotation.y = 0.35;
     root.traverse(o => {
       if (!o.isMesh) return;
+      if (!o.geometry.attributes.normal) o.geometry.computeVertexNormals();
       const old = Array.isArray(o.material) ? o.material[0] : o.material;
       const m = new T.MeshPhysicalMaterial({
         map: old.map || null, normalMap: old.normalMap || null, roughnessMap: old.roughnessMap || null, aoMap: old.aoMap || null,
