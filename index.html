@@ -53,6 +53,8 @@ button:disabled { color: var(--line); cursor: default; }
 .playing .play .pause { display: block; }
 .playing .play .start { display: none; }
 
+.credit { position: fixed; right: 16px; bottom: calc(10px + env(safe-area-inset-bottom, 0px)); margin: 0; font-size: 10px; color: var(--soft); }
+.credit a { color: inherit; }
 .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
 </style>
 
@@ -68,6 +70,7 @@ button:disabled { color: var(--line); cursor: default; }
   <div class="row rooms" id="rooms" aria-label="Styles"></div>
 </nav>
 <p class="sr" id="live" role="status"></p>
+<p class="credit" id="credit" hidden>Pig model: <a href="https://sketchfab.com/3d-models/domestic-pig-male-3abdf13ff0c341078526d4a4a79560f5" target="_blank" rel="noopener">&ldquo;Domestic Pig - male&rdquo;</a> by Noa Seller, <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">CC BY 4.0</a></p>
 
 <script src="audio/track-1-1.js"></script>
 <script src="audio/track-2-1.js"></script>
@@ -78,6 +81,7 @@ button:disabled { color: var(--line); cursor: default; }
 <script src="audio/track-6-1.js"></script>
 <script src="lib/three.min.js"></script>
 <script src="lib/GLTFLoader.js"></script>
+<script src="assets/pig.js"></script>
 <script src="rain.js"></script>
 <script>
 // ================================================================
@@ -3557,6 +3561,7 @@ ROOMS.forEach((room, i) => {
 });
 
 function renderControls() {
+  document.getElementById("credit").hidden = ROOMS[roomIndex].pieces[pieceIndex].art !== "field";
   [...roomsEl.children].forEach((b, i) => b.setAttribute("aria-current", String(i === roomIndex)));
   piecesEl.innerHTML = "";
   if (ROOMS[roomIndex].pieces.length > 1) ROOMS[roomIndex].pieces.forEach((p, i) => {

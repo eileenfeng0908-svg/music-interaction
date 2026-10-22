@@ -1,0 +1,11 @@
+Model Information:
+* title:	Domestic Pig - male
+* source:	https://sketchfab.com/3d-models/domestic-pig-male-3abdf13ff0c341078526d4a4a79560f5
+* author:	Noa Seller (https://sketchfab.com/NoaSeller)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "Domestic Pig - male" (https://sketchfab.com/3d-models/domestic-pig-male-3abdf13ff0c341078526d4a4a79560f5) by Noa Seller (https://sketchfab.com/NoaSeller) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)

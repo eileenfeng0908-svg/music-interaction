@@ -78,7 +78,7 @@ function rainGL() {
   RAIN.quad = new T.Mesh(new T.PlaneGeometry(2, 2)); RAIN.quad.frustumCulled = false; RAIN.quadScene.add(RAIN.quad);
   const M = (fs, u) => new T.ShaderMaterial({ vertexShader: RAIN_VS, fragmentShader: fs, uniforms: u, depthTest: false, depthWrite: false });
   RAIN.brightMat = M(`uniform sampler2D t; uniform float uTh; varying vec2 vUv;
-    void main(){ vec3 c = texture2D(t, vUv).rgb; float l = max(c.r, max(c.g, c.b)); gl_FragColor = vec4(c * smoothstep(uTh, uTh * 2.5, l), 1.); }`,
+    void main(){ vec3 c = min(texture2D(t, vUv).rgb, vec3(6.)); float l = max(c.r, max(c.g, c.b)); gl_FragColor = vec4(c * smoothstep(uTh, uTh * 2.5, l), 1.); }`,
     { t: { value: null }, uTh: { value: 0.5 } });
   RAIN.blurMat = M(`uniform sampler2D t; uniform vec2 uDir; varying vec2 vUv;
     void main(){ vec3 c = texture2D(t, vUv).rgb * .227;
@@ -108,9 +108,9 @@ function rainGL() {
       vec3 bloom = texture2D(tBloom, vUv).rgb;
       col += bloom * 0.55 + bloom * vec3(0.22, 0.035, 0.) * uHal;    // halation: the red glow film gives bright edges
       if (uRays > 0.) {                                                 // light falling through the rain and mist
-        vec2 dir = (uLightUV - vUv) / 32.; vec2 uv = vUv; float dec = 1.; vec3 sh = vec3(0);
-        for (int i = 0; i < 32; i++) { uv += dir; sh += texture2D(tBright, clamp(uv, 0., 1.)).rgb * dec; dec *= 0.95; }
-        col += sh / 32. * uRays;
+        vec2 dir = (uLightUV - vUv) * 0.45 / 40.; vec2 uv = vUv + dir * h12(vUv * uRes + uT); float dec = 1.; vec3 sh = vec3(0);
+        for (int i = 0; i < 40; i++) { uv += dir; sh += texture2D(tBloom, clamp(uv, 0., 1.)).rgb * dec; dec *= 0.95; }
+        col += sh / 40. * uRays;
       }
       col *= uExpo;
       col *= mix(vec3(0.88, 0.97, 1.12), vec3(1.1, 1.0, 0.86), uWarm);  // colour temperature
@@ -383,7 +383,7 @@ function fieldSetup() {
   // lights for the figure: a hard cold rim from behind, a whisper of fill, lightning
   scene.add(new T.HemisphereLight(0x50607a, 0x0a0c0e, 0.35));
   const rim = new T.SpotLight(0xcfe0ff, 6, 30, 0.5, 0.8, 1); rim.position.copy(L).multiplyScalar(0.5).setY(3.2); scene.add(rim); scene.add(rim.target);
-  const rim2 = new T.DirectionalLight(0xbcd0ff, 1.2); rim2.position.set(-2, 3, -5); scene.add(rim2);
+  const rim2 = new T.DirectionalLight(0xbcd0ff, 0.5); rim2.position.set(-2, 3, -5); scene.add(rim2);
   const fill = new T.DirectionalLight(0x8090a8, 0.12); fill.position.set(1, 1, 5); scene.add(fill);
   const bolt = new T.DirectionalLight(0xc8d4ff, 0); scene.add(bolt);
   scene.fog = new T.FogExp2(0x080a0d, 0.03);
@@ -400,17 +400,37 @@ function fieldSetup() {
   Object.assign(FIELD, { scene, cam, U, L, water, rainMesh, rim, bolt, mists, beam, pig: null, mixer: null, ready: true,
     vcam: new T.PerspectiveCamera(28, 2, 0.05, 400), splash, flicker: 0 });
   // the pig: a real model if one has been put in the assets folder
-  if (typeof fetch === "function" && location.protocol !== "file:")
-    fetch("assets/pig.glb", { method: "HEAD" }).then(r => { if (r.ok) loadPig("assets/pig.glb"); }).catch(() => {});
+  if (window.PIG_DATA) loadPig(); // "Domestic Pig - male" by Noa Seller (CC BY 4.0), in assets/pig.js
 }
 
 // ---------- the pig ----------
 // Any glTF/GLB model works: it is scaled to a real pig's length, stood in the water facing us,
 // and its skin made wet (a clear film of water over its own textures).
+// pig skin for models that come without textures: pink, mottled, finely wrinkled, soaked
+const PIG_SKIN = `
+float pn3(vec3 p){ vec3 i = floor(p), f = fract(p); f = f * f * (3. - 2. * f);
+  float n = dot(i, vec3(1., 57., 113.));
+  vec4 a = fract(sin(vec4(n, n + 1., n + 57., n + 58.)) * 43758.5453), b = fract(sin(vec4(n + 113., n + 114., n + 170., n + 171.)) * 43758.5453);
+  vec4 m = mix(a, b, f.z); vec2 m2 = mix(m.xy, m.zw, f.y); return mix(m2.x, m2.y, f.x); }
+varying vec3 vObj;`;
+function pigSkin(m) {
+  m.onBeforeCompile = sh => {
+    sh.vertexShader = sh.vertexShader.replace("#include <common>", "#include <common>\nvarying vec3 vObj;").replace("#include <begin_vertex>", "#include <begin_vertex>\nvObj = position;");
+    sh.fragmentShader = sh.fragmentShader.replace("#include <common>", "#include <common>\n" + PIG_SKIN)
+      .replace("#include <map_fragment>", `#include <map_fragment>
+        float pa = pn3(vObj * 5.), pb = pn3(vObj * 26.), pc = pn3(vObj * 140.);
+        vec3 skin = mix(vec3(0.60, 0.33, 0.29), vec3(0.80, 0.52, 0.45), pa);
+        skin = mix(skin, vec3(0.38, 0.25, 0.25), smoothstep(0.62, 0.9, pn3(vObj * 2.6 + 7.)) * 0.55);
+        skin *= 0.86 + 0.14 * pb;
+        diffuseColor.rgb = skin * 0.6;`)
+      .replace("#include <roughnessmap_fragment>", "#include <roughnessmap_fragment>\nroughnessFactor = mix(0.22, 0.5, pc * pb);")
+      .replace("#include <normal_fragment_maps>", "#include <normal_fragment_maps>\nnormal = normalize(normal + (vec3(pn3(vObj * 160.), pn3(vObj * 160. + 3.), pn3(vObj * 160. + 9.)) - .5) * 0.12);");
+  };
+}
 function loadPig(url) {
   if (!rainReady() || !THREE.GLTFLoader) return;
   if (!FIELD.ready) fieldSetup();
-  new THREE.GLTFLoader().load(url, gltf => {
+  const done = gltf => {
     const T = THREE, root = gltf.scene;
     if (FIELD.pig) FIELD.scene.remove(FIELD.pig);
     root.updateMatrixWorld(true);
@@ -418,7 +438,7 @@ function loadPig(url) {
     const k = 1.45 / Math.max(size.x, size.z, size.y * 0.8);
     const holder = new T.Group(); holder.add(root);
     root.position.set(-(box.min.x + box.max.x) / 2, -box.min.y, -(box.min.z + box.max.z) / 2);
-    holder.scale.setScalar(k); holder.position.y = -0.04; holder.rotation.y = 0.35;
+    holder.scale.setScalar(k); holder.position.y = -0.04; holder.rotation.y = 2.2; // side on, head turned towards us
     root.traverse(o => {
       if (!o.isMesh) return;
       if (!o.geometry.attributes.normal) o.geometry.computeVertexNormals();
@@ -431,6 +451,8 @@ function loadPig(url) {
         envMapIntensity: 0.9, vertexColors: !!old.vertexColors
       });
       if (old.normalScale) m.normalScale.copy(old.normalScale);
+      if (!old.map) { m.color.set(1, 1, 1); pigSkin(m); }
+      m.side = THREE.DoubleSide;
       o.material = m;
     });
     FIELD.scene.add(holder); FIELD.pig = holder;
@@ -455,7 +477,10 @@ function loadPig(url) {
     });
     if (FIELD.pigSplash) FIELD.scene.remove(FIELD.pigSplash);
     if (pts.length) { FIELD.pigSplash = FIELD.splash(pts, 500, 4, "0.9"); FIELD.scene.add(FIELD.pigSplash); }
-  }, undefined, e => console.warn("pig model could not be read", e));
+  };
+  const fail = e => console.warn("pig model could not be read", e);
+  if (url) new THREE.GLTFLoader().load(url, done, undefined, fail);
+  else { const s = atob(window.PIG_DATA), buf = new Uint8Array(s.length); for (let i = 0; i < s.length; i++) buf[i] = s.charCodeAt(i); new THREE.GLTFLoader().parse(buf.buffer, "", done, fail); }
 }
 // drop a .glb file onto the page to try a model straight away
 window.addEventListener("dragover", e => { e.preventDefault(); });
@@ -483,7 +508,7 @@ function fieldScene(t, dt, box) {
   const cold = new THREE.Color(0.66, 0.8, 1.0), warm = new THREE.Color(1.0, 0.86, 0.68);
   U.uLightCol.value.copy(cold).lerp(warm, RAIN.warm * 0.8);
   U.uLightI.value = 0.75 + lv * 0.6 + S.pulse * 0.15;
-  FIELD.rim.intensity = 5 + lv * 5; FIELD.rim.color.copy(U.uLightCol.value);
+  FIELD.rim.intensity = 1.6 + lv * 1.8; FIELD.rim.color.copy(U.uLightCol.value);
   FIELD.bolt.intensity = RAIN.flash * 2.2; if (RAIN.boltDir) FIELD.bolt.position.copy(RAIN.boltDir).multiplyScalar(10);
   FIELD.beam.rotation.set(0.35 + Math.sin(t * 0.07) * 0.08, 0, -0.9 + Math.sin(t * 0.045) * 0.7);
   FIELD.mists.forEach(m => m.quaternion.copy(cam.quaternion));
