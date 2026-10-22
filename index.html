@@ -74,6 +74,7 @@ button:disabled { color: var(--line); cursor: default; }
 <script src="audio/track-3-1.js"></script>
 <script src="audio/track-4-1.js"></script>
 <script src="audio/track-5-1.js"></script>
+<script src="img/print-5-3.js"></script>
 <script>
 // ================================================================
 // 1. THE ROOMS — five styles, each with three pieces.
@@ -103,7 +104,7 @@ const ROOMS = [
   { pieces: [
       { sound: "file", file: "5-1", art: "kimono" },
       { sound: "generated", make: "nami",      art: "koi" },
-      { sound: "generated", make: "sakura",    art: "ukiyo" }
+      { sound: "generated", make: "sakura",    art: "eisho" }
   ] }
 ];
 let roomIndex = 0, pieceIndex = 0;
@@ -2868,28 +2869,47 @@ function koiScene(t, dt, box) {
   }
   g.beginPath(); g.arc(px, ptop - pw, pw * 2.2, 0, TAU); const bg = g.createRadialGradient(px - pw, ptop - pw * 2, 0, px, ptop - pw, pw * 2.2); bg.addColorStop(0, "rgb(255,240,180)"); bg.addColorStop(1, "rgb(180,130,40)"); g.fillStyle = bg; g.fill();
   // anything that flies from the pole follows one centre line: it droops when the wind drops, ripples faster as it rises
-  const spine = (ax, ay, L, n, ph, stiff) => {
-    const pts = []; let x = ax, y = ay;
-    for (let i = 0; i <= n; i++) {
-      const s = i / n, droop = (1.25 - Math.min(1, wind) * 1.05) * Math.pow(s, 1.1) / stiff;
-      const a = droop + Math.sin(s * 7 - t * (3 + wind * 7) + ph) * (0.08 + 0.18 * s) * (0.4 + wind * 0.6) * stiff;
-      pts.push([x, y, a]); x += Math.cos(a) * L / n; y += Math.sin(a) * L / n;
+  // anything that flies from the pole is a light cloth chain: gravity pulls it down, the wind drags it out,
+  // and eddies in the wind travel down its length, so it flaps and snakes the way cloth really does
+  const ropes = koi.ropes || (koi.ropes = {}), WK = h * 3 * 3.6, GRAV = h * 3;
+  const spine = (ax, ay, L, n, ph, flutter) => {
+    const id = ph + ":" + n, seg = L / n; let R = ropes[id];
+    if (!R || R.L !== L) { R = ropes[id] = { L, p: [], q: [] }; for (let i = 0; i <= n; i++) { R.p.push([ax + i * seg * 0.7, ay + i * seg * 0.7]); R.q.push([ax + i * seg * 0.7, ay + i * seg * 0.7]); } }
+    const steps = 3, hs = Math.min(dt, 0.05) / steps;
+    for (let st = 0; st < steps; st++) {
+      R.p[0] = [ax, ay]; R.q[0] = [ax, ay];
+      for (let i = 1; i <= n; i++) {
+        const P = R.p[i], Q = R.q[i], vx = (P[0] - Q[0]) * 0.985, vy = (P[1] - Q[1]) * 0.985; Q[0] = P[0]; Q[1] = P[1];
+        const eddy = noise2(i * 0.13 - t * (1.2 + wind * 3), ph * 5 + t * 0.4) - 0.5, puff = noise2(ph * 3 + t * 0.9, i * 0.04) - 0.5;
+        P[0] += vx + wind * wind * WK * (1 + puff * 0.7) * hs * hs;
+        P[1] += vy + (GRAV + eddy * flutter * WK * (0.25 + wind)) * hs * hs;
+      }
+      for (let it = 0; it < 8; it++) {
+        for (let i = 0; i < n; i++) { // keep each link its length
+          const A = R.p[i], B = R.p[i + 1], dx = B[0] - A[0], dy = B[1] - A[1], d = Math.hypot(dx, dy) || 1, k = (d - seg) / d;
+          if (i === 0) { B[0] -= dx * k; B[1] -= dy * k; } else { A[0] += dx * k * 0.5; A[1] += dy * k * 0.5; B[0] -= dx * k * 0.5; B[1] -= dy * k * 0.5; }
+        }
+        for (let i = 1; i < n - 1; i++) { // and stop it folding too sharply
+          const A = R.p[i], B = R.p[i + 2], dx = B[0] - A[0], dy = B[1] - A[1], d = Math.hypot(dx, dy) || 1; if (d > seg * 1.85) continue; const k = (d - seg * 1.85) / d * 0.25;
+          A[0] += dx * k; A[1] += dy * k; B[0] -= dx * k; B[1] -= dy * k;
+        }
+      }
     }
-    return pts;
+    return R.p.map((P, i) => { const A = R.p[Math.max(0, i - 1)], B = R.p[Math.min(n, i + 1)]; return [P[0], P[1], Math.atan2(B[1] - A[1], B[0] - A[0])]; });
   };
   // the fukinagashi: five ribbons of colour streaming from the top
   const fk = [[40, 84, 170], [250, 246, 236], [214, 52, 40], [238, 190, 60], [40, 130, 80]];
   fk.forEach((c, k) => {
-    const sp = spine(px + pw, ptop + h * 0.05 + k * h * 0.02, w * 0.3, 20, k * 0.5, 1.4), hw = h * 0.011, top = [], bot = [];
+    const sp = spine(px + pw, ptop + h * 0.05 + k * h * 0.02, w * 0.3, 20, 10 + k, 1.6), hw = h * 0.011, top = [], bot = [];
     sp.forEach(([x, y, a], i) => { const f = 1 + (i / 20) * 0.3; top.push([x - Math.sin(a) * hw * f, y + Math.cos(a) * hw * f - hw]); bot.push([x + Math.sin(a) * hw * f, y - Math.cos(a) * hw * f + hw]); });
     g.beginPath(); top.forEach((p, i) => (i ? g.lineTo : g.moveTo).call(g, p[0], p[1])); bot.reverse().forEach(p => g.lineTo(p[0], p[1])); g.closePath(); g.fillStyle = rgb(c); g.fill(); g.strokeStyle = "rgba(40,30,30,0.35)"; g.lineWidth = 0.8; g.stroke();
   });
   // the carp, each a cloth tube that fills with wind
   KOI.forEach((K, ki) => {
     const n = 30, L = w * K.len, R0 = L * 0.11, ax = px + pw * 1.5, ay = y0 + h * K.y, fill = 0.55 + Math.min(1, wind) * 0.45;
-    const sp = spine(ax, ay, L, n, K.ph, 1);
+    const sp = spine(ax, ay, L, n, K.ph, 0.7);
     const prof = s => (s < 0.06 ? 0.86 + s * 2 : s < 0.32 ? 0.98 + 0.06 * Math.sin((s - 0.06) / 0.26 * Math.PI / 2) : 1.04 - Math.pow((s - 0.32) / 0.6, 1.4) * 0.62);
-    const C = sp.map(([x, y, a], i) => { const s = i / n, billow = 1 + 0.09 * Math.sin(s * 11 - t * (4 + wind * 6) + K.ph); const hw = R0 * prof(Math.min(s, 0.92)) * (s < 0.1 ? 1 : fill) * billow; return { x, y, a, hw, nx: -Math.sin(a), ny: Math.cos(a), s, pinch: billow }; });
+    const C = sp.map(([x, y, a], i) => { const s = i / n, bend = Math.abs(Math.atan2(Math.sin(a - sp[Math.max(0, i - 2)][2]), Math.cos(a - sp[Math.max(0, i - 2)][2]))), billow = (1 + 0.07 * Math.sin(s * 11 - t * (4 + wind * 6) + K.ph)) * (1 - Math.min(0.4, bend * 0.9) * s); const hw = R0 * prof(Math.min(s, 0.92)) * (s < 0.1 ? 1 : fill) * billow; return { x, y, a, hw, nx: -Math.sin(a), ny: Math.cos(a), s, pinch: billow }; });
     const edgeA = C.map(c => [c.x - c.nx * c.hw, c.y - c.ny * c.hw]), edgeB = C.map(c => [c.x + c.nx * c.hw, c.y + c.ny * c.hw]);
     const outline = () => { g.beginPath(); edgeA.forEach((p, i) => (i ? g.lineTo : g.moveTo).call(g, p[0], p[1])); edgeB.slice().reverse().forEach(p => g.lineTo(p[0], p[1])); g.closePath(); };
     // the tail: two lobes that flick from side to side
@@ -2941,152 +2961,105 @@ function koiScene(t, dt, box) {
 }
 function koiBeat() { if (S.bass > 0.35) koi.gust = Math.min(0.6, koi.gust + 0.25 + S.bass * 0.2); }
 
-// --- Room 5, piece iii: after an old woodblock print — the hem of a sakura kimono and a red crepe underrobe
-// swaying above bare feet on tall black geta, a paper lantern swinging beside her. Koto notes light the blossoms; beats make her step. ---
-const ukiyo = { key: "", ground: null, cloth: null, crepe: null, lantern: null, grain: null, flowers: [], lastNote: 0, glow: 0, swing: 0, swingV: 0, feet: [{ lift: 0, v: 0, target: 0 }, { lift: 0, v: 0, target: 0 }], next: 0, petals: [] };
-function ukiyoScene(t, dt, box) {
-  const h = box.h, w = Math.min(box.w, h * 0.68), x0 = box.x + (box.w - w) / 2, y0 = box.y;
-  const key = Math.round(w) + "x" + Math.round(h) + "@" + DPR;
-  const P = (x, y) => [x0 + x * w, y0 + y * h], INK = "rgb(26,22,24)";
-  const line = (pts, close) => { g.beginPath(); pts.forEach((p, i) => { const q = P(p[0], p[1]); (i ? g.lineTo : g.moveTo).call(g, q[0], q[1]); }); if (close) g.closePath(); };
-  const smooth = (pts, close) => line(catmull(pts, 6), close);
-  if (ukiyo.key !== key) {
-    ukiyo.key = key; ukiyo.grain = canvasGrain(w, h, 91);
-    ukiyo.ground = offscreen(w, h, (fw, fh) => { // the grey-olive ground of the print, ink laid unevenly, a little darker at the top
-      const cell = 3;
-      for (let y = 0; y < fh; y += cell) for (let x = 0; x < fw; x += cell) { const n = fbm(x * 0.01, y * 0.01) + noise2(x * 0.08, y * 0.5) * 0.2, k = y / fh; const c = mixc([96, 92, 80], [150, 142, 120], Math.max(0, Math.min(1, n * 0.9 + k * 0.35 - 0.1))); g.fillStyle = `rgb(${c[0] | 0},${c[1] | 0},${c[2] | 0})`; g.fillRect(x, y, cell, cell); }
-      const r = seeded(92); g.globalAlpha = 0.25; for (let i = 0; i < fw * fh / 300; i++) { g.fillStyle = r() < 0.5 ? "rgb(60,56,50)" : "rgb(190,180,156)"; g.fillRect(r() * fw, r() * fh, 1 + r() * 2, 0.7); } g.globalAlpha = 1;
-    });
-    ukiyo.flowers = [];
-    ukiyo.cloth = offscreen(w * 1.1, h * 0.7, (fw, fh) => { // the kimono: indigo-black crepe, patches of pink tie-dye dots, white cherry blossoms
-      const r = seeded(93);
-      g.fillStyle = "rgb(30,30,58)"; g.fillRect(0, 0, fw, fh);
-      for (let i = 0; i < fw * fh / 30; i++) { g.globalAlpha = 0.25; brush(r() * fw, r() * fh, 2 + r() * 4, 0.8, r() * 3, paint([44, 44, 84], 18, r)); } g.globalAlpha = 1;
-      for (const [cx, cy, rx, ry] of [[0.1, 0.22, 0.07, 0.16], [0.6, 0.12, 0.09, 0.07], [0.9, 0.62, 0.06, 0.12], [0.36, 0.5, 0.05, 0.08]]) { // shibori: pink ground with rows of small white rings
-        g.save(); g.beginPath(); for (let k = 0; k <= 24; k++) { const a = k / 24 * TAU, wob = 1 + (noise2(k * 0.7, cx * 9) - 0.5) * 0.5; (k ? g.lineTo : g.moveTo).call(g, fw * (cx + Math.cos(a) * rx * wob), fh * (cy + Math.sin(a) * ry * wob)); } g.closePath();
-        g.fillStyle = "rgb(196,128,146)"; g.fill(); g.clip(); const s = fw * 0.016;
-        for (let y = 0; y < fh; y += s) for (let x = (y / s % 2) * s / 2; x < fw; x += s) { g.save(); g.translate(x, y); g.rotate(Math.PI / 4); g.strokeStyle = "rgba(250,236,240,0.85)"; g.lineWidth = s * 0.14; g.strokeRect(-s * 0.2, -s * 0.2, s * 0.4, s * 0.4); g.fillStyle = "rgb(120,60,84)"; g.fillRect(-s * 0.06, -s * 0.06, s * 0.12, s * 0.12); g.restore(); }
-        g.restore();
-      }
-      const fr = fw * 0.036;
-      for (let i = 0; i < 400; i++) { // white blossoms, a few turned or half hidden
-        const x = r() * fw, y = r() * fh; if (ukiyo.flowers.some(f => Math.hypot(f.x - x, f.y - y) < fr * 2.3)) continue;
-        const s = fr * (0.7 + r() * 0.5), a = r() * TAU; ukiyo.flowers.push({ x, y, s, a, glow: 0 });
-        g.save(); g.translate(x, y); g.rotate(a); sakuraFlower(0, 0, s, "rgb(248,244,240)", "rgb(206,120,140)"); g.restore();
-      }
-    });
-    ukiyo.crepe = offscreen(w, h * 0.7, (fw, fh) => { // the underrobe: orange-red crinkled crepe, dark red creases running down it
-      const r = seeded(94); g.fillStyle = "rgb(214,84,44)"; g.fillRect(0, 0, fw, fh);
-      for (let i = 0; i < fw * fh / 40; i++) { g.globalAlpha = 0.3; brush(r() * fw, r() * fh, 2 + r() * 4, 0.6, Math.PI / 2 + (r() - 0.5) * 0.4, paint([226, 104, 56], 24, r)); } g.globalAlpha = 1;
-      for (let k = 0; k < 70; k++) { let x = r() * fw, y = r() * fh * 0.3; g.beginPath(); g.moveTo(x, y); const len = fh * (0.3 + r() * 0.6);
-        for (let s = 0; s < len; s += 6) { x += (r() - 0.5) * 5 + Math.sin(s * 0.05 + k) * 1.5; y += 6; g.lineTo(x, y); }
-        g.strokeStyle = r() < 0.7 ? "rgba(120,24,20,0.85)" : "rgba(250,150,100,0.6)"; g.lineWidth = 0.8 + r() * 1.6; g.stroke(); }
-    });
-    ukiyo.lantern = offscreen(w * 0.3, h * 0.42, (fw, fh) => { // a paper lantern: white ribbed paper between black lacquer rims with gold scrolls
-      const cx = fw / 2, rw = fw * 0.46, top = fh * 0.12, bot = fh * 0.88;
-      g.beginPath(); g.moveTo(cx - rw * 0.86, top); g.bezierCurveTo(cx - rw * 1.04, top + fh * 0.2, cx - rw * 1.04, bot - fh * 0.2, cx - rw * 0.86, bot); g.lineTo(cx + rw * 0.86, bot); g.bezierCurveTo(cx + rw * 1.04, bot - fh * 0.2, cx + rw * 1.04, top + fh * 0.2, cx + rw * 0.86, top); g.closePath();
-      const pg = g.createLinearGradient(cx - rw, 0, cx + rw, 0); pg.addColorStop(0, "rgb(214,208,190)"); pg.addColorStop(0.4, "rgb(250,246,232)"); pg.addColorStop(1, "rgb(200,192,172)"); g.fillStyle = pg; g.fill(); g.strokeStyle = INK; g.lineWidth = 1.5; g.stroke();
-      g.save(); g.clip(); g.strokeStyle = "rgba(40,36,36,0.8)"; g.lineWidth = 1.2; for (let y = top + fh * 0.05; y < bot; y += fh * 0.055) { g.beginPath(); g.moveTo(cx - rw * 1.1, y); g.quadraticCurveTo(cx, y + fh * 0.018, cx + rw * 1.1, y); g.stroke(); } g.restore();
-      for (const [y0b, hb] of [[0, top + 2], [bot - 2, fh - bot + 2]]) { g.fillStyle = "rgb(20,18,20)"; g.fillRect(cx - rw * 0.9, y0b, rw * 1.8, hb); g.strokeStyle = "rgb(214,170,70)"; g.lineWidth = 1.4; for (let k = 0; k < 4; k++) { const xx = cx - rw * 0.6 + k * rw * 0.4, yy = y0b + hb / 2; g.beginPath(); g.arc(xx, yy, hb * 0.25, 0, Math.PI * 1.5); g.stroke(); g.beginPath(); g.arc(xx + hb * 0.3, yy, hb * 0.15, Math.PI, TAU * 0.9); g.stroke(); } }
-      g.beginPath(); g.ellipse(cx, fh * 0.03, rw * 0.6, fh * 0.025, 0, 0, TAU); g.fillStyle = "rgb(236,206,96)"; g.fill();
-    });
+// --- Room 5, piece iii: the print itself, after Chōkōsai Eishō (c. 1795–1800) — a courtesan in her great hairpins, a white cat
+// batting at them from her shoulder. The print is shown exactly; a fine mesh lets it breathe: she turns her head a little,
+// the cat swats on the beat and its bell rings on koto notes, the red cord swings, and the mica ground glints with the high notes. ---
+const eisho = { gl: null, cv: null, prog: null, tex: null, n: 0, img: null, ready: false, paw: 0, pawV: 0, look: 0, lookV: 0, bell: 0, sweep: -1, lastNote: 0, swats: 0 };
+function eishoSetup() {
+  const cv = document.createElement("canvas"), gl = cv.getContext("webgl", { premultipliedAlpha: false });
+  if (!gl) return;
+  const VS = `
+    attribute vec2 uv; varying vec2 vUv;
+    uniform float t, nod, paw, look, sway, breath, bell;
+    const vec2 PX = vec2(1016.0, 1500.0);
+    vec2 rot(vec2 p, vec2 c, float a) { float s = sin(a), k = cos(a); p -= c; return c + vec2(k * p.x - s * p.y, s * p.x + k * p.y); }
+    void main() {
+      vec2 p = uv * PX, q = p;
+      // the cat, so the head and the paw can move without dragging it along
+      float cat = 1.0 - smoothstep(120.0, 260.0, distance(p, vec2(190.0, 820.0)));
+      // she turns her head a little, from the neck
+      float head = smoothstep(980.0, 760.0, p.y) * (1.0 - cat);
+      q = mix(q, rot(p, vec2(500.0, 980.0), nod), head);
+      // the cat's raised paw swats at the hairpin, pivoting at its shoulder
+      float pw = 1.0 - smoothstep(40.0, 110.0, distance(p, vec2(92.0, 705.0)));
+      q = mix(q, rot(p, vec2(105.0, 800.0), paw), pw);
+      // the cat's head looks about
+      float ch = 1.0 - smoothstep(60.0, 130.0, distance(p, vec2(205.0, 845.0)));
+      q = mix(q, rot(p, vec2(215.0, 930.0), look), ch);
+      // the bell shivers when it rings
+      float bl = 1.0 - smoothstep(20.0, 50.0, distance(p, vec2(140.0, 965.0)));
+      q.x += bl * bell * sin(t * 60.0) * 3.0;
+      // the red cord and the hem below swing slowly
+      float cord = smoothstep(1080.0, 1450.0, p.y);
+      q.x += cord * sway * (12.0 + 10.0 * sin(p.y * 0.01 + t));
+      // and she breathes
+      q.y -= smoothstep(1500.0, 950.0, p.y) * 0.0 + smoothstep(950.0, 1500.0, p.y) * breath * 6.0 * (1.0 - smoothstep(0.0, 400.0, abs(p.x - 520.0)));
+      vUv = uv; vec2 s = q / PX; gl_Position = vec4(s.x * 2.0 - 1.0, 1.0 - s.y * 2.0, 0.0, 1.0);
+    }`;
+  const FS = `
+    precision highp float; varying vec2 vUv; uniform sampler2D img; uniform float t, high, sweep, bell;
+    float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+    void main() {
+      vec3 c = texture2D(img, vUv).rgb; vec2 p = vUv * vec2(1016.0, 1500.0);
+      float lum = dot(c, vec3(0.3, 0.59, 0.11));
+      // the mica ground: tiny flakes in the grey-blue background catch the light
+      float ground = smoothstep(0.015, 0.05, c.b - c.r) * smoothstep(0.45, 0.65, lum);
+      float flake = step(0.988, hash(floor(p / 3.0) + floor(t * 5.0)));
+      c += vec3(0.9, 0.92, 1.0) * flake * ground * (0.12 + high * 0.5);
+      // light running along the gold hairpins
+      float gold = smoothstep(0.22, 0.32, c.r - c.b) * step(0.6, c.g) * step(0.7, c.r);
+      float band = exp(-pow((vUv.x * 0.7 + vUv.y * 0.6 - sweep) * 16.0, 2.0));
+      c += vec3(1.0, 0.95, 0.75) * gold * band * 0.35;
+      // the bell flashes when it rings
+      c += vec3(1.0, 0.9, 0.5) * bell * 0.4 * (1.0 - smoothstep(10.0, 34.0, distance(p, vec2(140.0, 962.0)))) * step(0.5, c.r);
+      gl_FragColor = vec4(c, 1.0);
+    }`;
+  const sh = (type, src) => { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) console.error(gl.getShaderInfoLog(s)); return s; };
+  const prog = gl.createProgram(); gl.attachShader(prog, sh(gl.VERTEX_SHADER, VS)); gl.attachShader(prog, sh(gl.FRAGMENT_SHADER, FS)); gl.linkProgram(prog); if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) console.error(gl.getProgramInfoLog(prog)); gl.useProgram(prog);
+  // a fine grid of triangles laid over the print
+  const NX = 64, NY = 96, verts = [];
+  for (let j = 0; j < NY; j++) for (let i = 0; i < NX; i++) {
+    const a = [i / NX, j / NY], b = [(i + 1) / NX, j / NY], c = [i / NX, (j + 1) / NY], d = [(i + 1) / NX, (j + 1) / NY];
+    verts.push(...a, ...b, ...c, ...b, ...d, ...c);
   }
-  // the music: koto notes light a blossom and the lantern; the bass sways the cloth
+  const buf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, buf); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(verts), gl.STATIC_DRAW);
+  const loc = gl.getAttribLocation(prog, "uv"); gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+  const tex = gl.createTexture(), img = new Image();
+  img.onload = () => {
+    gl.bindTexture(gl.TEXTURE_2D, tex); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, gl.RGB, gl.UNSIGNED_BYTE, img);
+    for (const [k, v] of [[gl.TEXTURE_MIN_FILTER, gl.LINEAR], [gl.TEXTURE_MAG_FILTER, gl.LINEAR], [gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE], [gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE]]) gl.texParameteri(gl.TEXTURE_2D, k, v);
+    eisho.ready = true;
+  };
+  img.src = (window.IMG_DATA || {})["5-3"] || "";
+  Object.assign(eisho, { gl, cv, prog, tex, n: verts.length / 2, img });
+}
+function eishoScene(t, dt, box) {
+  if (!eisho.gl) eishoSetup();
+  const AR = 1016 / 1500; let hh = box.h, ww = hh * AR; if (ww > box.w) { ww = box.w; hh = ww / AR; }
+  const x = box.x + (box.w - ww) / 2, y = box.y + (box.h - hh) / 2;
+  // the music: koto notes ring the bell and send light along the pins
   const now = ctx ? ctx.currentTime : 0;
   while (NOTES.length && NOTES[0].t + 2 < now) NOTES.shift();
-  NOTES.forEach(n => { if (n.t <= now && n.t > ukiyo.lastNote) { ukiyo.lastNote = n.t; const f = ukiyo.flowers[Math.floor(Math.random() * ukiyo.flowers.length)]; if (f) f.glow = 1; ukiyo.glow = Math.min(1, ukiyo.glow + 0.35); } });
-  ukiyo.glow *= Math.pow(0.4, dt); ukiyo.flowers.forEach(f => f.glow *= Math.pow(0.35, dt));
-  const sway = Math.sin(t * 0.9) * 0.012 + Math.sin(t * 2.1) * 0.006 * (0.5 + S.mid) + S.bass * 0.01, flut = 0.5 + S.mid + S.bass;
-  ukiyo.swingV += (-ukiyo.swing * 6 - ukiyo.swingV * 0.8 + S.bass * 0.6 * Math.sin(t * 3)) * dt; ukiyo.swing += ukiyo.swingV * dt;
-  g.save(); g.beginPath(); g.rect(x0, y0, w, h); g.clip();
-  blit(ukiyo.ground, x0, y0);
-  // the red crepe underrobe hanging behind the legs, its ragged edge fluttering
-  const ragged = (pts, ph) => pts.map(([x, y], i) => [x + Math.sin(t * 2.4 + i * 1.3 + ph) * 0.006 * flut + sway, y + Math.sin(t * 3.1 + i * 2.1 + ph) * 0.008 * flut]);
-  const crepeEdge = ragged([[0.22, 0.4], [0.24, 0.47], [0.27, 0.52], [0.3, 0.5], [0.33, 0.56], [0.37, 0.5], [0.41, 0.46], [0.47, 0.5], [0.52, 0.47], [0.6, 0.52], [0.68, 0.5], [0.76, 0.55], [0.84, 0.52], [0.92, 0.56], [1.02, 0.54]], 0);
-  g.save(); smooth([[0.24, 0.05], [0.22, 0.25]].concat(crepeEdge, [[1.02, 0.3], [0.7, 0.05]]), true); g.clip(); g.drawImage(ukiyo.crepe, x0 + sway * w, y0 + h * 0.05, ukiyo.crepe.w, ukiyo.crepe.h); g.restore();
-  smooth(crepeEdge, false); g.strokeStyle = "rgb(110,24,20)"; g.lineWidth = 1.6; g.stroke();
-  // the legs and the geta: flat white skin with a fine ink line, as in the print
-  const fe = ukiyo.feet; ukiyo.next -= dt;
-  fe.forEach(f => { f.v += ((f.target - f.lift) * 60 - f.v * 10) * dt; f.lift += f.v * dt; if (f.target > 0 && f.lift > f.target * 0.9) f.target = 0; });
-  // one leg, foot and geta. The geta is a black block seen from the front-left: a board on two tall teeth. Toes point left, toward us.
-  const leg = (top, ax, ay, sc, lift) => {
-    const ox = x0 + ax * w, oy = y0 + ay * h - lift * h * 0.03, k = w * sc, D = [0.05, -0.035], BH = 0.026, TH = 0.11;
-    const G = (lx, ly) => [ox + lx * k, oy + ly * k], poly = (pts, fill, stroke) => { g.beginPath(); pts.forEach((p, i) => { const q = G(p[0], p[1]); (i ? g.lineTo : g.moveTo).call(g, q[0], q[1]); }); g.closePath(); g.fillStyle = fill; g.fill(); if (stroke) { g.strokeStyle = stroke; g.lineWidth = 1; g.stroke(); } };
-    const add = (p, q, s = 1) => [p[0] + q[0] * s, p[1] + q[1] * s];
-    g.save(); const pv = G(0.12, BH + TH); g.translate(pv[0], pv[1]); g.rotate(-lift * 0.12); g.translate(-pv[0], -pv[1]); // when she lifts, the toe end rises first
-    for (const [a, b] of [[0.075, 0.105], [-0.1, -0.07]]) { // the two teeth, thin boards set across, back one first
-      poly([add([b, BH], D, 0), add([b, BH], D), add([b, BH + TH * 0.97], D), [b, BH + TH]], "rgb(46,42,44)", "rgb(90,84,84)");
-      poly([[a, BH], [b, BH], [b, BH + TH], [a, BH + TH]], "rgb(16,14,16)", "rgb(90,84,84)");
-    }
-    const F0 = [-0.135, 0], F1 = [0.125, 0];
-    poly([F1, add(F1, D), add(add(F1, D), [0, BH]), add(F1, [0, BH])], "rgb(40,36,38)", "rgb(90,84,84)"); // the board's end
-    poly([F0, F1, add(F1, [0, BH]), add(F0, [0, BH])], "rgb(16,14,16)", "rgb(100,94,94)"); // its front edge
-    poly([F0, F1, add(F1, D), add(F0, D)], "rgb(64,60,62)", "rgb(110,104,104)"); // its top, worn grey
-    // the leg and foot as one flat white shape with a fine ink outline, as the printmaker cut it
-    const tg = [(top[0] * w + x0 - ox) / k, (top[1] * h + y0 - oy) / k], mid = D[1] * 0.5;
-    const shape = [[-0.14, mid + 0.012], [-0.125, mid - 0.025], [-0.08, mid - 0.045], [-0.045, -0.1], [-0.03, -0.15], [tg[0] - 0.04 + (-0.03 - tg[0]) * 0.45, tg[1] * 0.55 - 0.05], [tg[0] - 0.04, tg[1]], [tg[0] + 0.04, tg[1]], [tg[0] + 0.05 + (0.05 - tg[0]) * 0.4, tg[1] * 0.5 - 0.06], [0.045, -0.15], [0.06, -0.1], [0.085, -0.045], [0.09, mid + 0.006], [0.02, mid + 0.014]];
-    const cs = catmull(shape.concat([shape[0]]), 6); g.beginPath(); cs.forEach((p, i) => { const q = G(p[0], p[1]); (i ? g.lineTo : g.moveTo).call(g, q[0], q[1]); }); g.closePath();
-    g.fillStyle = "rgb(246,241,230)"; g.fill(); g.strokeStyle = INK; g.lineWidth = 1.3; g.stroke();
-    // toes, lined up across the board, the big toe in front, each with its nail
-    for (let i = 4; i >= 0; i--) { // the four small toes peek out behind the big toe
-      const tc = add([-0.128 + i * 0.01, mid + 0.006 - i * 0.002], D, -0.05 + i * 0.16), r = (0.02 - i * 0.002) * k, q = G(tc[0], tc[1]);
-      g.save(); g.translate(q[0], q[1]); g.rotate(-0.15);
-      g.beginPath(); g.moveTo(r * 1.4, -r * 0.9); g.bezierCurveTo(-r * 0.4, -r * 1.25, -r * 1.35, -r * 0.6, -r * 1.3, r * 0.15); g.bezierCurveTo(-r * 1.25, r * 0.8, -r * 0.2, r * 0.75, r * 1.4, r * 0.6);
-      g.fillStyle = "rgb(246,241,230)"; g.fill(); g.strokeStyle = INK; g.lineWidth = 1; g.stroke();
-      g.beginPath(); g.ellipse(-r * 0.75, -r * 0.45, r * 0.42, r * 0.3, -0.3, 0, TAU); g.strokeStyle = "rgba(26,22,24,0.6)"; g.lineWidth = 0.7; g.stroke(); // the nail
-      g.restore(); }
-    // the black velvet thong: from between the first toes, over the instep, down to each side of the board
-    const t0 = G(-0.105, mid - 0.012), s1 = G(-0.03, 0.004), s2 = add([-0.03, 0], D, 1), s2g = G(s2[0], s2[1]), top2 = G(-0.055, -0.07);
-    g.strokeStyle = "rgb(14,12,14)"; g.lineCap = "round"; g.lineWidth = Math.max(2.5, k * 0.011);
-    g.beginPath(); g.moveTo(s1[0], s1[1]); g.quadraticCurveTo(G(-0.07, -0.06)[0], G(-0.07, -0.06)[1], top2[0], top2[1]); g.quadraticCurveTo(G(-0.02, -0.08)[0], G(-0.02, -0.08)[1], s2g[0], s2g[1]); g.stroke();
-    g.beginPath(); g.moveTo(t0[0], t0[1]); g.quadraticCurveTo(G(-0.085, -0.05)[0], G(-0.085, -0.05)[1], top2[0], top2[1]); g.stroke();
-    g.strokeStyle = "rgba(120,110,110,0.6)"; g.lineWidth = 1; g.beginPath(); g.moveTo(s1[0], s1[1] - 2); g.quadraticCurveTo(G(-0.07, -0.065)[0], G(-0.07, -0.065)[1], top2[0], top2[1] - 2); g.stroke();
-    // a few fine lines: ankle bone, tendon, the arch
-    g.strokeStyle = "rgba(26,22,24,0.55)"; g.lineWidth = 0.8;
-    for (const [a, b, c2, d2] of [[0.0, -0.135, 0.02, -0.12], [0.05, -0.14, 0.06, -0.11], [0.02, mid + 0.004, 0.06, mid + 0.002]]) { const p = G(a, b), q = G(c2, d2); g.beginPath(); g.moveTo(p[0], p[1]); g.lineTo(q[0], q[1]); g.stroke(); }
-    g.restore();
-  };
-  leg([0.56, 0.45], 0.56, 0.69, 1.08, fe[1].lift);
-  leg([0.38, 0.46], 0.35, 0.85, 1.25, fe[0].lift);
-  // a few strands of the crepe falling in front of the legs
-  for (const [x, top, len, wd, ph] of [[0.26, 0.24, 0.26, 0.05, 0], [0.3, 0.24, 0.33, 0.045, 1.3], [0.36, 0.24, 0.24, 0.05, 2.1], [0.41, 0.25, 0.3, 0.04, 2.9], [0.47, 0.26, 0.23, 0.05, 3.7], [0.53, 0.3, 0.21, 0.045, 4.4], [0.6, 0.34, 0.18, 0.05, 5.2]]) {
-    // the crepe hangs in loose crinkled folds, each with a torn-looking edge that flutters
-    const L = [], R = [];
-    for (let k = 0; k <= 7; k++) { const s2 = k / 7, dx = sway * 1.3 + Math.sin(t * 2 + k * 0.8 + ph) * 0.01 * flut * s2 + s2 * 0.02, jag = (hash2(k, ph * 7) - 0.5) * 0.012 * s2;
-      L.push([x + dx + jag, top + len * s2 + (k === 7 ? 0.01 : 0)]); R.push([x + wd * (1 - s2 * 0.5) + dx - jag, top + len * s2 * (0.85 + hash2(ph, k) * 0.2)]); }
-    const shp = L.concat(R.reverse());
-    g.save(); smooth(shp, true); g.clip(); g.drawImage(ukiyo.crepe, x0 + (ph * 0.03) * w, y0 + h * 0.05, ukiyo.crepe.w, ukiyo.crepe.h); g.fillStyle = `rgba(110,20,16,${0.1 + (ph % 2) * 0.12})`; g.fillRect(x0, y0, w, h); g.restore();
-    smooth(shp, true); g.strokeStyle = "rgb(100,20,16)"; g.lineWidth = 1.3; g.stroke();
+  NOTES.forEach(n => { if (n.t <= now && n.t > eisho.lastNote) { eisho.lastNote = n.t; eisho.bell = 1; if (eisho.sweep > 1.6 || eisho.sweep < -0.2) eisho.sweep = -0.2; } });
+  eisho.bell *= Math.pow(0.02, dt); if (eisho.sweep < 1.7) eisho.sweep += dt * 0.6;
+  // the paw is a spring: a beat flicks it up, it falls back and settles
+  eisho.pawV += (-eisho.paw * 70 - eisho.pawV * 9) * dt; eisho.paw += eisho.pawV * dt;
+  const lookT = Math.sin(t * 0.37) * 0.05 + Math.sin(t * 0.9) * 0.02 * (0.5 + S.mid);
+  eisho.lookV += ((lookT - eisho.look) * 20 - eisho.lookV * 6) * dt; eisho.look += eisho.lookV * dt;
+  if (!eisho.gl) return;
+  const { gl, cv, prog } = eisho, W = Math.round(ww * DPR), H = Math.round(hh * DPR);
+  if (cv.width !== W || cv.height !== H) { cv.width = W; cv.height = H; }
+  if (eisho.ready) {
+    gl.viewport(0, 0, W, H); gl.clearColor(0.94, 0.93, 0.89, 1); gl.clear(gl.COLOR_BUFFER_BIT);
+    const loc = eisho.loc || (eisho.loc = {}), U = (k, v) => gl.uniform1f(loc[k] || (loc[k] = gl.getUniformLocation(prog, k)), v);
+    U("t", t); U("nod", Math.sin(t * 0.45) * 0.012 + S.bass * 0.006); U("paw", eisho.paw); U("look", eisho.look);
+    U("sway", Math.sin(t * 1.1) * (0.4 + S.mid * 0.8)); U("breath", 0.5 + 0.5 * Math.sin(t * 1.3)); U("bell", eisho.bell); U("high", S.high); U("sweep", eisho.sweep);
+    gl.drawArrays(gl.TRIANGLES, 0, eisho.n);
   }
-  // the kimono: its hem lifts and settles with the music, the folds following
-  const hem = ragged([[0.07, 0.52], [0.15, 0.54], [0.21, 0.48], [0.25, 0.38], [0.3, 0.29], [0.37, 0.27], [0.46, 0.31], [0.58, 0.38], [0.7, 0.44], [0.82, 0.47], [0.92, 0.5], [1.03, 0.53]], 4).map(([x, y], i) => [x, y + Math.sin(t * 1.3 + i * 0.6) * 0.006 * flut]);
-  const robe = [[-0.02, -0.02], [-0.01, 0.2], [0.04, 0.42]].concat(hem, [[1.03, -0.02]]);
-  g.save(); smooth(robe, true); g.clip(); g.drawImage(ukiyo.cloth, x0 - w * 0.05 + sway * w * 1.5, y0 - h * 0.02, ukiyo.cloth.w, ukiyo.cloth.h);
-  ukiyo.flowers.forEach(f => { if (f.glow < 0.05) return; const fx = x0 - w * 0.05 + sway * w * 1.5 + f.x, fy = y0 - h * 0.02 + f.y; g.save(); g.translate(fx, fy); g.rotate(f.a); g.globalAlpha = f.glow; sakuraFlower(0, 0, f.s * (1 + f.glow * 0.25), "rgb(255,214,226)", "rgb(220,60,100)"); g.restore(); g.globalAlpha = 1; });
-  // the long folds: dark creases with a pale edge, swinging from the waist
-  for (const [fx, fy, ph] of [[0.02, 0.02, 0], [0.18, -0.02, 1], [0.34, 0.0, 2], [0.5, -0.02, 3], [0.66, 0.0, 4], [0.8, 0.04, 5], [0.95, 0.1, 6]]) {
-    const pts = []; for (let k = 0; k <= 6; k++) { const s2 = k / 6; pts.push([fx + s2 * 0.16 + Math.pow(s2, 2) * 0.06 + sway * s2 * 2 + Math.sin(t * 1.4 + ph + k * 0.5) * 0.006 * flut * s2, fy + s2 * 0.5 + Math.sin(s2 * 3 + ph) * 0.02]); }
-    smooth(pts, false); g.strokeStyle = "rgba(6,6,16,0.9)"; g.lineWidth = Math.max(3, w * 0.012); g.stroke();
-    smooth(pts.map(([a, b]) => [a - 0.008, b + 0.004]), false); g.strokeStyle = "rgba(214,150,166,0.55)"; g.lineWidth = Math.max(1.5, w * 0.004); g.stroke();
-  }
-  g.restore();
-  // the hem: a lining of pale pink rolled at the edge, and an ink line
-  smooth(hem, false); g.strokeStyle = "rgb(230,176,184)"; g.lineWidth = Math.max(3, w * 0.012); g.stroke(); g.strokeStyle = INK; g.lineWidth = 1.2; g.stroke();
-  // the lantern on its iron bracket, swinging, lit from inside
-  { const hx = x0 + w * 0.11, hy = y0; g.strokeStyle = INK; g.lineWidth = Math.max(3, w * 0.012); g.beginPath(); g.moveTo(hx, hy); g.lineTo(hx, hy + h * 0.1); g.stroke();
-    g.save(); g.translate(hx, hy + h * 0.1); g.rotate(ukiyo.swing * 0.25); g.lineWidth = 2; g.beginPath(); g.arc(0, h * 0.012, h * 0.012, 0, TAU); g.stroke();
-    const L = ukiyo.lantern; g.drawImage(L, -L.w / 2, h * 0.02, L.w, L.h);
-    g.globalCompositeOperation = "multiply"; const lg = g.createRadialGradient(0, h * 0.02 + L.h * 0.5, 0, 0, h * 0.02 + L.h * 0.5, L.w * 0.6); lg.addColorStop(0, `rgba(255,214,120,${0.25 + ukiyo.glow * 0.5})`); lg.addColorStop(1, "rgba(255,214,120,0)"); g.fillStyle = lg; g.fillRect(-L.w / 2, h * 0.02 + L.h * 0.1, L.w, L.h * 0.8); g.globalCompositeOperation = "source-over";
-    g.restore(); }
-  // a few petals coming down
-  if (ukiyo.petals.length < 18 && Math.random() < dt * (1.5 + S.high * 6)) ukiyo.petals.push({ x: Math.random(), y: -0.02, vx: 0.01 + Math.random() * 0.02, vy: 0.03 + Math.random() * 0.03, a: Math.random() * TAU, p: Math.random() * 6 });
-  ukiyo.petals = ukiyo.petals.filter(p => p.y < 1.02);
-  ukiyo.petals.forEach(p => { p.x += (p.vx + Math.sin(t + p.p) * 0.01) * dt; p.y += p.vy * dt; p.a += dt * 2; const q = P(p.x, p.y), s = w * 0.008; g.save(); g.translate(q[0], q[1]); g.rotate(p.a); g.scale(1, 0.4 + Math.abs(Math.sin(t * 2 + p.p)) * 0.6); g.beginPath(); g.ellipse(0, 0, s, s * 0.6, 0, 0, TAU); g.fillStyle = "rgb(250,226,232)"; g.fill(); g.strokeStyle = "rgba(200,120,140,0.7)"; g.lineWidth = 0.7; g.stroke(); g.restore(); });
-  g.globalCompositeOperation = "multiply"; blit(ukiyo.grain, x0, y0); g.globalCompositeOperation = "source-over";
-  g.restore();
+  g.save(); g.shadowColor = "rgba(60,50,30,0.25)"; g.shadowBlur = 18; g.shadowOffsetY = 6; g.fillStyle = "rgb(236,226,204)"; g.fillRect(x, y, ww, hh); g.restore();
+  if (eisho.ready) g.drawImage(cv, x, y, ww, hh);
 }
-// on a beat she shifts her weight: one geta lifts and taps down, then the other
-function ukiyoBeat() { if (ukiyo.next > 0 || S.bass < 0.2) return; const f = ukiyo.feet[(ukiyo.step = (ukiyo.step || 0) + 1) % 2]; f.target = 0.9 + S.bass * 0.4; ukiyo.next = 0.5; }
+function eishoBeat() { if (S.bass > 0.25 && eisho.paw > -0.05) eisho.pawV -= 2.2 + S.bass * 1.5; }
 
 const ARTS = {
   // segments: how many mirrored slices; drift: how far the slice wanders across the pattern
@@ -3104,7 +3077,7 @@ const ARTS = {
   chapel: { scene: chapelScene },
   kimono: { scene: kimonoScene },
   koi: { scene: koiScene },
-  ukiyo: { scene: ukiyoScene }
+  eisho: { scene: eishoScene }
 };
 const K = { spin: 0, punch: 0 };
 function onBeat() {
@@ -3122,7 +3095,7 @@ function onBeat() {
   if (art === "scream") screamBeat();
   if (art === "kimono") kimonoBeat();
   if (art === "koi") koiBeat();
-  if (art === "ukiyo") ukiyoBeat();
+  if (art === "eisho") eishoBeat();
   if (art === "manton") { manton.fr.v += manton.side * (1.4 + S.bass); manton.ang.v += manton.side * 0.6; manton.side *= -1; }
   if (art === "feria") { feria.wave = 0; feria.splash = 1; feria.palm.v += (Math.random() < 0.5 ? -1 : 1) * (0.6 + S.bass); }
 }
