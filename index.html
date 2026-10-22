@@ -90,8 +90,8 @@ const ROOMS = [
   ] },
   { pieces: [
       { sound: "file", file: "3-1", art: "sun" },
-      { sound: "generated", make: "prelude", art: "tree" },
-      { sound: "generated", make: "sunny",   art: "field" }
+      { sound: "generated", make: "prelude", art: "heaven" },
+      { sound: "generated", make: "sunny",   art: "meadow" }
   ] },
   null, null // rooms 4 and 5 arrive later
 ];
@@ -1454,177 +1454,384 @@ function sunScene(t, dt, box) {
   g.restore();
 }
 
-// --- Room 3, piece ii: a ribbon-stroke tree; every harpsichord note paints a new branch ---
-const tree = { strokes: null, grown: 0, lastNote: 0, wobble: [], star: 0 };
-function makeTree() {
-  const r = seeded(31), out = [];
-  const COLS = ["#7FA9D1", "#F1D35B", "#E8483A", "#8CC46A", "#B79BD6", "#F2A23A", "#E77AA6", "#4F9E93", "#F4E07E", "#C58A5B"];
-  for (let i = 0; i < 64; i++) {
-    const p = i / 64, side = i % 2 ? 1 : -1;
-    const y = 0.9 - p * 0.78 + (r() - 0.5) * 0.03;
-    const reach = (0.42 - p * 0.3) * (0.8 + r() * 0.35);
-    const ang = side * (0.95 + r() * 0.45 - p * 0.35);
-    out.push({ y, side, reach, ang, wid: 0.03 + r() * 0.03, col: COLS[Math.floor(r() * COLS.length)], hatch: r() < 0.22 ? (r() < 0.5 ? 1 : 2) : 0, kink: 0.2 + r() * 0.4, orn: r() < 0.25 ? Math.floor(r() * 3) : -1, born: -1 });
-  }
-  return out;
+// --- Oil-paint toolkit: pictures are painted once, stroke by stroke, onto hidden canvases and then reused ---
+function offscreen(w, h, paint) {
+  const c = document.createElement("canvas");
+  c.width = Math.max(1, Math.ceil(w * DPR)); c.height = Math.max(1, Math.ceil(h * DPR)); c.w = w; c.h = h;
+  const keep = g; g = c.getContext("2d"); g.setTransform(DPR, 0, 0, DPR, 0, 0); paint(w, h); g = keep;
+  return c;
 }
-function treeScene(t, dt, box) {
-  const h = box.h, w = Math.min(box.w, h * 0.62), x0 = box.x + (box.w - w) / 2, y0 = box.y, cx = x0 + w / 2;
-  if (!tree.strokes) tree.strokes = makeTree();
-  const now = ctx ? ctx.currentTime : 0;
-  // each new note grows the next branch; once the tree is full, notes make branches dance instead
-  while (NOTES.length && NOTES[0].t + 2 < now) NOTES.shift();
-  NOTES.forEach(n => {
-    if (n.t <= now && n.t > tree.lastNote) {
-      tree.lastNote = n.t;
-      if (tree.grown < tree.strokes.length) tree.strokes[tree.grown++].born = t;
-      else { const k = Math.floor(((Math.log2(n.f / 110) * 12) % tree.strokes.length + tree.strokes.length) % tree.strokes.length); tree.wobble[k] = 1; }
+function blit(c, x, y) { g.drawImage(c, x, y, c.w, c.h); }
+function hash2(x, y) { const n = Math.sin(x * 127.1 + y * 311.7) * 43758.5453; return n - Math.floor(n); }
+function noise2(x, y) {
+  const xi = Math.floor(x), yi = Math.floor(y), xf = x - xi, yf = y - yi, s = v => v * v * (3 - 2 * v);
+  const a = hash2(xi, yi), b = hash2(xi + 1, yi), c = hash2(xi, yi + 1), d = hash2(xi + 1, yi + 1);
+  return a + (b - a) * s(xf) + (c - a) * s(yf) + (a - b - c + d) * s(xf) * s(yf);
+}
+function fbm(x, y) { return noise2(x, y) * 0.5 + noise2(x * 2.1, y * 2.1) * 0.3 + noise2(x * 4.3, y * 4.3) * 0.2; }
+const mixc = (a, b, k) => [a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k, a[2] + (b[2] - a[2]) * k];
+const paint = (c, j, r) => `rgb(${Math.round(c[0] + (r() - 0.5) * j)},${Math.round(c[1] + (r() - 0.5) * j)},${Math.round(c[2] + (r() - 0.5) * j)})`;
+// One brush stroke: a long oval with a slightly lighter ridge, like paint picked up by the bristles.
+function brush(x, y, len, wid, ang, col, ridge) {
+  g.beginPath(); g.ellipse(x, y, len, wid, ang, 0, TAU); g.fillStyle = col; g.fill();
+  if (ridge) { g.beginPath(); g.ellipse(x - Math.sin(ang) * wid * 0.3, y + Math.cos(ang) * wid * 0.3 - wid * 0.2, len * 0.7, wid * 0.3, ang, 0, TAU); g.fillStyle = ridge; g.fill(); }
+}
+// A sky, darker blue at the top and warm near the horizon.
+function paintSky(w, h, seed, top, mid, low) {
+  return offscreen(w, h, () => {
+    const r = seeded(seed);
+    const grad = g.createLinearGradient(0, 0, 0, h);
+    grad.addColorStop(0, `rgb(${top})`); grad.addColorStop(0.6, `rgb(${mid})`); grad.addColorStop(1, `rgb(${low})`);
+    g.fillStyle = grad; g.fillRect(0, 0, w, h);
+    const n = Math.floor(w * h / 40);
+    for (let i = 0; i < n; i++) {
+      const x = r() * w, y = r() * h, k = y / h, c = k < 0.6 ? mixc(top, mid, k / 0.6) : mixc(mid, low, (k - 0.6) / 0.4);
+      brush(x, y, 3 + r() * 5, 1.2 + r() * 1.4, (r() - 0.5) * 0.8 + fbm(x * 0.01, y * 0.01) * 2, paint(c, 16, r));
     }
   });
-  if (!nowPlaying && tree.grown < 20) for (; tree.grown < 20; tree.grown++) tree.strokes[tree.grown].born = -10; // a sapling before play
-  tree.star += dt * (0.4 + S.bass * 2);
-  g.save(); g.beginPath(); g.rect(x0, y0, w, h); g.clip();
-  g.fillStyle = "#F4E6D9"; g.fillRect(x0, y0, w, h);
-  // two soft pink washes behind, with uneven edges
-  g.fillStyle = "rgba(240,175,165,0.55)";
-  for (const [ax, aw] of [[0.06, 0.3], [0.6, 0.32]]) {
-    g.beginPath(); g.moveTo(x0 + w * ax, y0 + h * 0.06);
-    for (let i = 0; i <= 10; i++) g.lineTo(x0 + w * (ax + aw) + Math.sin(i * 1.7) * w * 0.015, y0 + h * (0.06 + i * 0.05));
-    for (let i = 10; i >= 0; i--) g.lineTo(x0 + w * ax + Math.sin(i * 2.3) * w * 0.015, y0 + h * (0.06 + i * 0.05) + (i === 10 ? Math.sin(i) * h * 0.03 : 0));
-    g.closePath(); g.fill();
+}
+// A cloud: puffs of different sizes, lit from the upper left, painted in short curling strokes.
+function paintCloud(w, h, seed, warm) {
+  const r = seeded(seed), puffs = [];
+  for (let i = 0; i < 10; i++) {
+    const a = r() * TAU, d = Math.sqrt(r()) * 0.6;
+    puffs.push([w / 2 + Math.cos(a) * d * w * 0.4, h * 0.55 + Math.sin(a) * d * h * 0.3 - r() * h * 0.08, (0.14 + r() * 0.14) * w]);
   }
-  const S0 = Math.min(w, h * 0.7);
-  // the trunk: two long ribbons
-  const baseY = y0 + h * 0.92;
-  const ribbon = (x1, y1, x2, y2, wid, kink, col, hatch, wob) => {
-    const dx = x2 - x1, dy = y2 - y1, L = Math.hypot(dx, dy), nx = -dy / L, ny = dx / L;
-    const mx = x1 + dx * 0.5 + nx * wid * kink * 2 + nx * wob, my = y1 + dy * 0.5 + ny * wid * kink * 2 + ny * wob;
-    const path = off => {
-      g.beginPath();
-      g.moveTo(x1 + nx * wid * 0.5 + off, y1 + ny * wid * 0.5 + off);
-      g.quadraticCurveTo(mx + nx * wid * 0.6 + off, my + ny * wid * 0.6 + off, x2 + nx * wid * 0.15 + off, y2 + ny * wid * 0.15 + off);
-      g.lineTo(x2 - nx * wid * 0.1 + dx / L * wid * 0.6 + off, y2 - ny * wid * 0.1 + dy / L * wid * 0.6 + off); // a torn, pointed tip
-      g.quadraticCurveTo(mx - nx * wid * 0.5 + off, my - ny * wid * 0.5 + off, x1 - nx * wid * 0.5 + off, y1 - ny * wid * 0.5 + off);
-      g.closePath();
-    };
-    path(0); g.fillStyle = col; g.fill();
-    if (hatch) { g.save(); path(0); g.clip(); g.strokeStyle = "rgba(60,40,40,0.35)"; g.lineWidth = 1; for (let k = -L; k < L * 2; k += 4) { g.beginPath(); g.moveTo(x1 + k, y1 - L); g.lineTo(x1 + k + L, y1 + L); if (hatch === 2) { g.moveTo(x1 + k, y1 + L); g.lineTo(x1 + k + L, y1 - L); } g.stroke(); } g.restore(); }
-    path(-1.5); g.strokeStyle = "#1E1A1A"; g.lineWidth = 1.4; g.stroke(); // the ink line, printed a little off register
-  };
-  ribbon(cx, baseY, cx + S0 * 0.01, y0 + h * 0.1, S0 * 0.03, 0.2, "#F1D35B", 0, 0);
-  ribbon(cx - S0 * 0.02, baseY, cx - S0 * 0.01, y0 + h * 0.3, S0 * 0.025, -0.3, "#8CC46A", 0, 0);
-  // feet of the tree
-  [[-1, 0.3, "#E77AA6"], [1, 0.32, "#F4E07E"], [-1, 0.22, "#B79BD6"], [1, 0.2, "#7FA9D1"]].forEach(([s, r, c], k) =>
-    ribbon(cx, baseY - S0 * 0.06, cx + s * S0 * r, baseY + S0 * (0.02 + k * 0.012), S0 * 0.03, 0.3 * s, c, k === 2 ? 1 : 0, 0));
-  // branches, each sweeping up from the trunk
-  tree.strokes.forEach((b, k) => {
-    if (b.born === -1) return;
-    const grow = Math.min(1, (t - b.born) / 0.35), ease = 1 - Math.pow(1 - grow, 3);
-    tree.wobble[k] = (tree.wobble[k] || 0) * Math.pow(0.05, dt);
-    const sway = Math.sin(t * 1.3 + k) * 2 + (tree.wobble[k] || 0) * 8 * Math.sin(t * 20);
-    const bx = cx, by = y0 + h * b.y, len = S0 * b.reach * ease;
-    const ex = bx + Math.sin(b.ang) * len, ey = by - Math.cos(Math.abs(b.ang)) * len;
-    ribbon(bx, by, ex, ey, S0 * b.wid * (0.4 + 0.6 * ease), b.kink * b.side, b.col, b.hatch, sway);
-    if (b.orn >= 0 && grow >= 1) { // baubles hanging from the tips, bobbing to the beat
-      const bob = Math.sin(t * 3 + k) * 2 + S.pulse * 3, ox = ex, oy = ey + 6 + bob, r = S0 * 0.022;
-      g.strokeStyle = "#1E1A1A"; g.lineWidth = 1; g.beginPath(); g.moveTo(ex, ey); g.lineTo(ox, oy - r); g.stroke();
-      if (b.orn === 0) { g.beginPath(); g.arc(ox, oy, r, 0, TAU); shape("#C8283A"); g.fillStyle = "#1E1A1A"; for (let d = 0; d < 6; d++) { g.beginPath(); g.arc(ox + Math.cos(d) * r * 1.1, oy + Math.sin(d) * r * 1.1, 1.2, 0, TAU); g.fill(); } }
-      else if (b.orn === 1) { g.beginPath(); g.arc(ox, oy, r, 0, TAU); shape("#E2A93B"); g.strokeStyle = "#5A3A1A"; g.lineWidth = 1; g.beginPath(); for (let d = 0; d < 3; d++) { g.moveTo(ox - r * 0.6 + d * r * 0.5, oy - r * 0.3); g.arc(ox - r * 0.45 + d * r * 0.5, oy, r * 0.18, -Math.PI / 2, Math.PI * 1.4); } g.stroke(); }
-      else { g.beginPath(); g.moveTo(ox, oy - r * 1.4); g.lineTo(ox + r * 0.8, oy); g.lineTo(ox, oy + r * 1.4); g.lineTo(ox - r * 0.8, oy); g.closePath(); shape("#B5203A"); g.beginPath(); g.arc(ox, oy, r * 0.35, 0, TAU); shape("#F4E6D9"); }
+  const dens = (x, y) => { let v = 0; for (const [px, py, pr] of puffs) v = Math.max(v, 1 - Math.hypot(x - px, (y - py) * 1.15) / pr); const edge = Math.min(x, w - x, y, h - y) / (Math.min(w, h) * 0.12); return (v + (fbm(x * 0.03, y * 0.03) - 0.5) * 0.35) * Math.min(1, edge); };
+  const light = warm ? [252, 240, 222] : [250, 246, 240], midc = warm ? [231, 204, 186] : [222, 216, 214], shade = warm ? [168, 146, 150] : [150, 158, 178];
+  return offscreen(w, h, () => {
+    for (let i = 0; i < w * h / 7; i++) {
+      const x = r() * w, y = r() * h, d = dens(x, y);
+      if (d < 0.02) continue;
+      const lit = Math.max(0, Math.min(1, 0.5 + (d - dens(x - 8, y - 10)) * -2.5 + (1 - y / h) * 0.3));
+      const c = lit > 0.5 ? mixc(midc, light, (lit - 0.5) * 2) : mixc(shade, midc, lit * 2);
+      g.globalAlpha = Math.min(1, d * 4);
+      brush(x, y, 2.5 + r() * 4, 1.2 + r() * 1.6, fbm(x * 0.05, y * 0.05) * 6, paint(c, 14, r));
     }
+    g.globalAlpha = 1;
   });
-  // the star on top
-  g.save(); g.translate(cx + S0 * 0.01, y0 + h * 0.07); g.rotate(tree.star);
-  g.strokeStyle = "#E2A93B"; g.lineWidth = 2.4; const sr = S0 * 0.045 * (1 + S.pulse * 0.25);
-  for (let k = 0; k < 8; k++) { g.beginPath(); g.moveTo(0, 0); g.lineTo(Math.cos(k * TAU / 8) * sr, Math.sin(k * TAU / 8) * sr); g.stroke(); }
-  g.fillStyle = "#1E1A1A"; for (let k = 0; k < 8; k++) { g.beginPath(); g.arc(Math.cos(k * TAU / 8 + 0.39) * sr * 1.05, Math.sin(k * TAU / 8 + 0.39) * sr * 1.05, 1.5, 0, TAU); g.fill(); }
+}
+// Shade a closed path like a rounded form: a light spot to the upper left, shadow to the lower right.
+function roundShade(cx, cy, r, light, mid, dark) {
+  const grad = g.createRadialGradient(cx - r * 0.35, cy - r * 0.4, r * 0.05, cx, cy, r * 1.15);
+  grad.addColorStop(0, `rgb(${light})`); grad.addColorStop(0.55, `rgb(${mid})`); grad.addColorStop(1, `rgb(${dark})`);
+  g.fillStyle = grad; g.fill();
+}
+function pearl(x, y, r) {
+  g.beginPath(); g.arc(x, y, r, 0, TAU); roundShade(x, y, r, [255, 252, 246], [232, 222, 210], [160, 150, 150]);
+  g.beginPath(); g.arc(x - r * 0.35, y - r * 0.38, r * 0.22, 0, TAU); g.fillStyle = "rgba(255,255,255,0.9)"; g.fill();
+  g.beginPath(); g.arc(x + r * 0.3, y + r * 0.35, r * 0.35, 0, TAU); g.fillStyle = "rgba(230,190,200,0.35)"; g.fill();
+}
+// A full-blown rose or peony: rings of cupped petals, each petal shaded and streaked with strokes.
+function paintBloom(x, y, R, base, tip, seed) {
+  const r = seeded(seed);
+  for (let ring = 0; ring < 4; ring++) {
+    const n = 9 - ring, pr = R * (1 - ring * 0.22);
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * TAU + ring * 0.5 + r() * 0.3;
+      g.save(); g.translate(x, y); g.rotate(a);
+      g.beginPath(); g.moveTo(0, 0);
+      g.bezierCurveTo(pr * 0.5, -pr * 0.15, pr * 0.95, -pr * 0.45, pr * 1.0, 0);
+      g.bezierCurveTo(pr * 0.95, pr * 0.45, pr * 0.5, pr * 0.15, 0, 0);
+      const grad = g.createLinearGradient(0, 0, pr, 0);
+      grad.addColorStop(0, `rgb(${mixc(base, [40, 20, 20], 0.35 + ring * 0.05)})`); grad.addColorStop(0.7, `rgb(${base})`); grad.addColorStop(1, `rgb(${tip})`);
+      g.fillStyle = grad; g.fill();
+      g.save(); g.clip();
+      for (let k = 0; k < 7; k++) brush(pr * (0.4 + r() * 0.55), (r() - 0.5) * pr * 0.5, pr * 0.18, pr * 0.03, (r() - 0.5) * 0.4, paint(mixc(base, tip, 0.5 + r() * 0.5), 20, r));
+      g.restore();
+      g.restore();
+    }
+  }
+  g.beginPath(); g.arc(x, y, R * 0.16, 0, TAU); g.fillStyle = `rgb(${mixc(base, [60, 20, 20], 0.5)})`; g.fill();
+}
+function paintLeaf(x, y, len, ang, seed) {
+  const r = seeded(seed);
+  g.save(); g.translate(x, y); g.rotate(ang);
+  leaf(len, len * 0.38);
+  const grad = g.createLinearGradient(-len * 0.4, 0, len * 0.4, 0); grad.addColorStop(0, "rgb(38,64,40)"); grad.addColorStop(1, "rgb(84,118,62)");
+  g.fillStyle = grad; g.fill();
+  g.strokeStyle = "rgba(150,170,110,0.6)"; g.lineWidth = 1; g.beginPath(); g.moveTo(0, -len); g.lineTo(0, len * 0.3); g.stroke();
+  g.restore(); r();
+}
+
+// --- Room 3, piece ii: a painted ceiling — two cherubs drift through the clouds and meet for a kiss ---
+const heaven = { key: "", sky: null, clouds: [], cherub: null, garland: null, frame: null, petals: [], lastNote: 0, meet: 0 };
+const SKIN = { light: [252, 228, 212], mid: [236, 186, 160], dark: [176, 112, 98] };
+// A cherub's body, flying to the right, painted once (the wings are added live so they can beat).
+function paintCherub(s) {
+  return offscreen(s, s, () => {
+    const r = seeded(77);
+    g.translate(s / 2, s / 2); g.scale(s, s);
+    const part = (pathFn, cx, cy, rad) => { pathFn(); roundShade(cx, cy, rad, SKIN.light, SKIN.mid, SKIN.dark); };
+    // drapery: a rose-coloured cloth trailing from the waist
+    g.beginPath(); g.moveTo(-0.05, 0.05); g.bezierCurveTo(-0.3, 0.0, -0.45, -0.12, -0.62, -0.02); g.bezierCurveTo(-0.5, 0.06, -0.38, 0.14, -0.08, 0.16); g.closePath();
+    const dg = g.createLinearGradient(-0.6, -0.1, -0.05, 0.15); dg.addColorStop(0, "rgb(150,40,50)"); dg.addColorStop(1, "rgb(222,110,110)"); g.fillStyle = dg; g.fill();
+    // far leg and arm, a little darker
+    const lb = (a, b, c, w0, w1, w2) => { limb(a, b, c, w0, w1, w2); };
+    lb([-0.1, 0.12], [-0.3, 0.3], [-0.46, 0.34], 0.17, 0.12, 0.08); roundShade(-0.3, 0.28, 0.2, SKIN.mid, SKIN.dark, [150, 92, 82]);
+    lb([0.04, -0.14], [0.2, -0.3], [0.32, -0.38], 0.12, 0.09, 0.07); roundShade(0.2, -0.3, 0.15, SKIN.mid, SKIN.dark, [150, 92, 82]);
+    // torso
+    part(() => { g.beginPath(); g.ellipse(0, 0, 0.17, 0.25, -0.9, 0, TAU); }, 0, 0, 0.25);
+    // near leg: chubby thigh, bent knee, little foot
+    part(() => lb([-0.08, 0.1], [-0.3, 0.16], [-0.48, 0.08], 0.19, 0.14, 0.09), -0.25, 0.12, 0.2);
+    // near arm reaching forward
+    part(() => lb([0.1, -0.08], [0.28, -0.02], [0.42, -0.12], 0.13, 0.1, 0.075), 0.25, -0.05, 0.16);
+    // head
+    part(() => { g.beginPath(); g.arc(0.2, -0.26, 0.15, 0, TAU); }, 0.2, -0.26, 0.15);
+    g.beginPath(); g.ellipse(0.27, -0.21, 0.04, 0.025, 0, 0, TAU); g.fillStyle = "rgba(225,110,110,0.55)"; g.fill(); // rosy cheek
+    g.strokeStyle = "rgb(120,70,60)"; g.lineWidth = 0.008;
+    g.beginPath(); g.arc(0.26, -0.27, 0.025, 0.2, Math.PI - 0.2); g.stroke(); // closed eye
+    g.beginPath(); g.arc(0.33, -0.2, 0.012, 0, TAU); g.fillStyle = "rgb(200,90,90)"; g.fill(); // lips
+    // golden-brown curls
+    for (let i = 0; i < 26; i++) {
+      const a = -2.9 + r() * 2.6, d = 0.1 + r() * 0.06, x = 0.2 + Math.cos(a) * d, y = -0.26 + Math.sin(a) * d;
+      g.beginPath(); g.arc(x, y, 0.03 + r() * 0.015, 0, TAU); roundShade(x, y, 0.04, [222, 168, 102], [176, 112, 60], [110, 62, 34]);
+    }
+    // oil texture over the skin
+    for (let i = 0; i < 260; i++) {
+      const x = -0.5 + r(), y = -0.45 + r() * 0.9;
+      g.globalAlpha = 0.18; brush(x, y, 0.025, 0.006, -0.8 + (r() - 0.5), paint(mixc(SKIN.light, SKIN.mid, r()), 20, r));
+    }
+    g.globalAlpha = 1;
+  });
+}
+// A wing: a fan of feathers, lighter at the top edge; flap turns the whole fan.
+function wing(x, y, s, flap, far) {
+  g.save(); g.translate(x, y); g.rotate(-0.5 + flap);
+  const base = far ? [196, 196, 204] : [246, 242, 236], shade = far ? [140, 140, 155] : [200, 196, 200];
+  for (let i = 0; i < 11; i++) {
+    const a = -2.5 + i * 0.13, len = s * (0.3 + Math.sin((i / 10) * Math.PI) * 0.22 + i * 0.012);
+    g.save(); g.rotate(a);
+    g.beginPath(); g.ellipse(len / 2, 0, len / 2, s * 0.045, 0, 0, TAU);
+    const gr = g.createLinearGradient(0, 0, len, 0); gr.addColorStop(0, `rgb(${shade})`); gr.addColorStop(1, `rgb(${base})`);
+    g.fillStyle = gr; g.fill(); g.strokeStyle = `rgba(${shade},0.6)`; g.lineWidth = 0.6; g.stroke();
+    g.restore();
+  }
+    g.restore();
+}
+function drawCherub(x, y, s, dir, flap, tilt) {
+  const c = heaven.cherub;
+  g.save(); g.translate(x, y); g.scale(dir, 1); g.rotate(tilt);
+  wing(-s * 0.02, -s * 0.15, s, flap + 0.25, true);
+  g.drawImage(c, -s / 2, -s / 2, s, s);
+  wing(-s * 0.06, -s * 0.12, s, flap, false);
   g.restore();
-  // little sparkle ticks that flash with the high notes
-  g.strokeStyle = `rgba(150,170,220,${0.3 + S.high * 2})`; g.lineWidth = 1.2;
-  for (let k = 0; k < 10; k++) {
-    const a = k * 2.4, rx = cx + Math.cos(a) * S0 * (0.3 + (k % 3) * 0.06), ry = y0 + h * (0.25 + (k % 5) * 0.12);
-    for (let l = 0; l < 4; l++) { const aa = l * 0.5 - 0.75; g.beginPath(); g.moveTo(rx + Math.cos(aa) * 5, ry + Math.sin(aa) * 5); g.lineTo(rx + Math.cos(aa) * 10, ry + Math.sin(aa) * 10); g.stroke(); }
+}
+function heavenScene(t, dt, box) {
+  const h = box.h, w = Math.min(box.w, h * 0.66), x0 = box.x + (box.w - w) / 2, y0 = box.y;
+  const key = Math.round(w) + "x" + Math.round(h) + "@" + DPR;
+  if (heaven.key !== key) { // paint the still parts once for this size
+    heaven.key = key;
+    heaven.sky = paintSky(w, h, 5, [104, 154, 204], [180, 208, 226], [240, 216, 196]);
+    heaven.clouds = [0, 1, 2, 3, 4].map(i => ({ c: paintCloud(w * (0.5 + (i % 3) * 0.12), w * (0.3 + (i % 2) * 0.08), 40 + i, i % 2 === 0), x: [-0.1, 0.45, 0.1, 0.55, 0.25][i], y: [0.08, 0.2, 0.45, 0.6, 0.75][i], v: 0.006 + i * 0.002 }));
+    heaven.cherub = paintCherub(Math.round(h * 0.2));
+    heaven.garland = offscreen(w, h * 0.3, (gw, gh) => { // roses, peonies, leaves and strings of pearls along the bottom
+      const r = seeded(9);
+      for (let i = 0; i < 14; i++) paintLeaf(r() * gw, gh * (0.45 + r() * 0.5), gh * 0.22, (r() - 0.5) * 2.5, i);
+      [[0.1, 0.75, 0.2, [214, 120, 130], [250, 214, 214]], [0.32, 0.85, 0.17, [244, 226, 196], [255, 250, 236]], [0.55, 0.8, 0.22, [236, 206, 140], [255, 244, 210]], [0.8, 0.78, 0.19, [176, 50, 70], [236, 140, 150]], [0.95, 0.92, 0.15, [244, 226, 196], [255, 250, 236]]]
+        .forEach(([px, py, pr, b, tp], k) => paintBloom(px * gw, py * gh, pr * gh, b, tp, 60 + k));
+      for (let s2 = 0; s2 < 2; s2++) for (let i = 0; i < 40; i++) { const p = i / 39, x = p * gw, y = gh * (0.55 + s2 * 0.15) + Math.sin(p * Math.PI * (2 + s2)) * gh * 0.12; pearl(x, y, gh * 0.025); }
+    });
+    heaven.frame = offscreen(w, h, (fw, fh) => { // a gilded frame with an arched top
+      const b = fw * 0.045;
+      g.beginPath(); g.rect(0, 0, fw, fh);
+      g.moveTo(b, fh - b); g.lineTo(fw - b, fh - b); g.lineTo(fw - b, b + fw * 0.25);
+      g.bezierCurveTo(fw - b, b, b, b, b, b + fw * 0.25); g.closePath();
+      const gold = g.createLinearGradient(0, 0, fw, fh);
+      gold.addColorStop(0, "rgb(236,204,130)"); gold.addColorStop(0.3, "rgb(170,128,58)"); gold.addColorStop(0.55, "rgb(240,214,150)"); gold.addColorStop(0.8, "rgb(150,108,48)"); gold.addColorStop(1, "rgb(222,186,112)");
+      g.fillStyle = gold; g.fill("evenodd");
+      g.strokeStyle = "rgba(90,60,20,0.6)"; g.lineWidth = 1.5;
+      g.beginPath(); g.moveTo(b, fh - b); g.lineTo(fw - b, fh - b); g.lineTo(fw - b, b + fw * 0.25); g.bezierCurveTo(fw - b, b, b, b, b, b + fw * 0.25); g.closePath(); g.stroke();
+    });
   }
+  g.save(); g.beginPath(); g.rect(x0, y0, w, h); g.clip();
+  blit(heaven.sky, x0, y0);
+  // clouds drift across, slowly, faster when the music is busy
+  heaven.clouds.forEach(cl => {
+    cl.x += dt * cl.v * (0.6 + S.mid * 1.5);
+    if (cl.x > 1.05) cl.x = -0.1 - cl.c.w / w;
+    blit(cl.c, Math.round(x0 + cl.x * w), Math.round(y0 + cl.y * h + Math.sin(t * 0.3 + cl.v * 100) * 4));
+  });
+  // light breaking through on loud moments: a few crisp, pale rays from the top
+  g.fillStyle = `rgba(255,246,220,${0.06 + S.bass * 0.12})`;
+  for (let k = 0; k < 4; k++) { const a = -0.25 + k * 0.17 + Math.sin(t * 0.2) * 0.03; g.beginPath(); g.moveTo(x0 + w * 0.5, y0 - h * 0.1); g.lineTo(x0 + w * 0.5 + Math.tan(a) * h, y0 + h); g.lineTo(x0 + w * 0.5 + Math.tan(a + 0.06) * h, y0 + h); g.closePath(); g.fill(); }
+  // the two cherubs: they hover, drift apart, then glide together for a kiss at the end of each phrase
+  heaven.meet += dt / 13.3;
+  const ph = heaven.meet % 1, close = Math.pow(Math.max(0, Math.sin(ph * Math.PI)), 3);
+  const s = heaven.cherub.w, gap = s * (0.95 - close * 0.62), cy = y0 + h * 0.42;
+  const flap = Math.sin(t * (7 + S.mid * 6)) * 0.35;
+  drawCherub(x0 + w / 2 - gap / 2 - s * 0.1, cy + Math.sin(t * 1.6) * s * 0.08 + close * s * 0.04, s, 1, flap, 0.15 + close * 0.1);
+  drawCherub(x0 + w / 2 + gap / 2 + s * 0.1, cy + Math.sin(t * 1.6 + 1.3) * s * 0.08 + close * s * 0.04, s, -1, Math.sin(t * (7 + S.mid * 6) + 1) * 0.35, 0.15 + close * 0.1);
+  // a little one far off, crossing the sky now and then
+  const far = (t * 0.04) % 1.6 - 0.3;
+  if (far > -0.2 && far < 1.2) drawCherub(x0 + far * w, y0 + h * 0.17 + Math.sin(t) * 6, s * 0.45, 1, Math.sin(t * 9) * 0.4, -0.1);
+  // every note of the harpsichord lets a rose petal (or sometimes a pearl) fall
+  const now = ctx ? ctx.currentTime : 0;
+  while (NOTES.length && NOTES[0].t + 2 < now) NOTES.shift();
+  NOTES.forEach(n => { if (n.t <= now && n.t > heaven.lastNote) { heaven.lastNote = n.t; if (heaven.petals.length < 90) heaven.petals.push({ x: x0 + Math.random() * w, y: y0 - 10, vx: (Math.random() - 0.5) * 20, vy: 25 + Math.random() * 25, a: Math.random() * TAU, spin: (Math.random() - 0.5) * 4, pearl: Math.random() < 0.15, col: pick([[214, 96, 112], [240, 170, 176], [250, 222, 214], [190, 50, 70]]) }); } });
+  heaven.petals = heaven.petals.filter(p => p.y < y0 + h + 20);
+  heaven.petals.forEach(p => {
+    p.x += (p.vx + Math.sin(t * 2 + p.a) * 18) * dt; p.y += p.vy * dt; p.a += p.spin * dt;
+    if (p.pearl) { pearl(p.x, p.y, 4); return; }
+    g.save(); g.translate(p.x, p.y); g.rotate(p.a); g.scale(1, Math.abs(Math.cos(t * 2 + p.a)) * 0.7 + 0.3);
+    g.beginPath(); g.moveTo(0, -7); g.bezierCurveTo(7, -6, 6, 5, 0, 7); g.bezierCurveTo(-6, 5, -7, -6, 0, -7);
+    const pg = g.createLinearGradient(0, -7, 0, 7); pg.addColorStop(0, `rgb(${p.col})`); pg.addColorStop(1, `rgb(${mixc(p.col, [255, 255, 255], 0.4)})`); g.fillStyle = pg; g.fill();
+    g.restore();
+  });
+  blit(heaven.garland, x0, y0 + h * 0.72);
+  blit(heaven.frame, x0, y0);
   g.restore();
 }
 
-// --- Room 3, piece iii: a field of yellow flowers in the wind, and someone running through it, arms wide ---
-const field = { gust: -1, petals: [], wind: { x: 0, v: 0 }, hair: [] };
-function fieldScene(t, dt, box) {
-  const h = box.h, w = Math.min(box.w, h * 0.8), x0 = box.x + (box.w - w) / 2, y0 = box.y, u = h / 100, cx = x0 + w / 2;
-  const X = v => cx + v * u, Y = v => y0 + v * u;
-  spring(field.wind, dt, 3, 1.2);
-  if (field.gust >= 0) { field.gust += dt * 0.8; if (field.gust > 1.3) field.gust = -1; }
-  g.save(); g.beginPath(); g.rect(x0, y0, w, h); g.clip();
-  // hazy blue hills far away, then the field
-  g.fillStyle = "#AFC3E3"; g.fillRect(x0, y0, w, h);
-  g.beginPath(); g.moveTo(x0, Y(22)); for (let i = 0; i <= 20; i++) g.lineTo(x0 + i * w / 20, Y(14 + Math.sin(i * 0.6) * 3 + Math.sin(i * 1.4) * 1.5)); g.lineTo(x0 + w, Y(30)); g.lineTo(x0, Y(30)); g.closePath(); shape("#6E86B8");
-  g.fillStyle = "#79A947"; g.fillRect(x0, Y(24), w, h);
-  const windAt = (x, depth) => { // the wind: a steady breeze, plus a gust that sweeps across on the beat
-    const g1 = field.gust >= 0 ? Math.exp(-Math.pow(((x - x0) / w - field.gust) * 5, 2)) : 0;
-    return Math.sin(x * 0.02 - t * 2.2 + depth) * (0.35 + S.mid * 0.6) + g1 * 1.6 + field.wind.x * 0.4;
-  };
-  const drawRow = (yy, size, count, seed, depth) => {
-    for (let i = 0; i < count; i++) {
-      const fx = x0 + ((i + ((seed * 7 + i * 13) % 10) / 10) / count) * w, fy = Y(yy) + ((i * 37 + seed) % 7) * size * 0.25;
-      const lean = windAt(fx, depth) * size * 0.9;
-      g.strokeStyle = "#4E8A2E"; g.lineWidth = Math.max(1, size * 0.12);
-      g.beginPath(); g.moveTo(fx, fy + size * 2.5); g.quadraticCurveTo(fx + lean * 0.3, fy + size, fx + lean, fy); g.stroke();
-      const e = S.spec[(i + seed) % 16];
-      g.fillStyle = (i + seed) % 4 ? "#F6D21E" : "#F9E35A";
-      for (let p = 0; p < 5; p++) { const a = p * TAU / 5 + i; g.beginPath(); g.arc(fx + lean + Math.cos(a) * size * 0.45, fy + Math.sin(a) * size * 0.35, size * (0.42 + e * 0.15), 0, TAU); g.fill(); }
-    }
-  };
-  // back rows: small and many
-  for (let r = 0; r < 6; r++) drawRow(26 + r * 4, u * (0.9 + r * 0.35), 40 - r * 3, r * 11, r);
-  // the runner, mid-field: arms flung wide, head back, hair streaming, a striped jumper
-  const run = t * 3.2, bob = Math.abs(Math.sin(run)) * 1.2, px = Math.sin(t * 0.25) * 10, py = 50 - bob;
-  const open = 0.5 + Math.sin(t * 0.9) * 0.15 + S.mid * 0.3; // arms open wider when the music swells
-  const skin = "#E8B48A", stripes = ["#E9578B", "#F28A3B", "#5A7FD1", "#F5D04A", "#B860B0"];
-  // hair streaming back (to the right) with the wind
-  for (let k = 0; k < 9; k++) {
-    const sx = X(px + 2 + k * 0.2), sy = Y(py - 13 + k * 0.4);
-    g.beginPath(); g.moveTo(sx, sy);
-    for (let s = 1; s <= 6; s++) g.lineTo(sx + s * u * (1.6 + k * 0.1), sy + s * u * 0.9 + Math.sin(t * 6 - s + k) * u * (0.4 + S.high * 2));
-    g.strokeStyle = "#1A1412"; g.lineWidth = u * 0.9; g.lineCap = "round"; g.stroke();
-  }
-  // legs (mostly hidden in the flowers), jeans
+// --- Room 3, piece iii: a painted meadow of yellow flowers in the wind, a girl in a white dress with her arms open ---
+const meadow = { key: "", sky: null, hills: null, ground: null, sprites: [], clumps: [], clouds: [], gust: -1, wind: { x: 0, v: 0 }, petals: [] };
+// One clump of rapeseed: thin stems topped with domes of little four-petal flowers, painted once and reused.
+function paintClump(s, seed) {
+  return offscreen(s, s * 1.4, (cw, ch) => {
+    const r = seeded(seed), heads = [];
+    for (let i = 0; i < 5; i++) heads.push([cw * (0.25 + r() * 0.5), ch * (0.12 + r() * 0.3)]);
+    g.lineCap = "round";
+    heads.forEach(([hx, hy]) => { // stems and a few blue-green leaves
+      g.strokeStyle = paint([92, 128, 52], 24, r); g.lineWidth = cw * 0.025;
+      g.beginPath(); g.moveTo(cw * 0.5 + (r() - 0.5) * cw * 0.1, ch); g.quadraticCurveTo(hx + (r() - 0.5) * cw * 0.2, (hy + ch) / 2, hx, hy); g.stroke();
+      for (let k = 0; k < 2; k++) { const ly = hy + (ch - hy) * (0.4 + r() * 0.4); g.save(); g.translate(hx + (cw * 0.5 - hx) * 0.5, ly); g.rotate((r() - 0.5) * 2.4); leaf(cw * 0.12, cw * 0.05); g.fillStyle = paint([86, 122, 70], 20, r); g.fill(); g.restore(); }
+    });
+    heads.forEach(([hx, hy]) => { // flower domes: darker gold underneath, sunlit lemon on top
+      for (let i = 0; i < 34; i++) {
+        const a = r() * TAU, d = Math.sqrt(r()), x = hx + Math.cos(a) * d * cw * 0.13, y = hy + Math.sin(a) * d * cw * 0.09, top = 1 - (y - hy + cw * 0.09) / (cw * 0.18);
+        const c = mixc([196, 140, 18], [255, 232, 92], Math.max(0, Math.min(1, top * 0.8 + r() * 0.35))), fr = cw * (0.018 + r() * 0.012);
+        g.fillStyle = paint(c, 18, r);
+        for (let p = 0; p < 4; p++) { const pa = p * TAU / 4 + a; g.beginPath(); g.ellipse(x + Math.cos(pa) * fr, y + Math.sin(pa) * fr, fr * 1.1, fr * 0.7, pa, 0, TAU); g.fill(); }
+      }
+      for (let i = 0; i < 6; i++) { g.beginPath(); g.arc(hx + (r() - 0.5) * cw * 0.12, hy - cw * 0.06 + (r() - 0.5) * cw * 0.05, cw * 0.012, 0, TAU); g.fillStyle = "rgb(110,140,60)"; g.fill(); } // green buds on top
+    });
+  });
+}
+// The girl, seen from behind, painted live so her dress, hair and arms can move.
+function drawGirl(x, y, k, t, open, wind) {
+  const X = v => x + v * k, Y = v => y + v * k, r = seeded(31);
+  const skinG = (x1, y1, x2, y2) => { const sg = g.createLinearGradient(X(x1), Y(y1), X(x2), Y(y2)); sg.addColorStop(0, "rgb(244,206,176)"); sg.addColorStop(1, "rgb(196,136,108)"); return sg; };
+  // arms, opened wide; they rise with the music
   for (const s of [-1, 1]) {
-    const step = Math.sin(run + (s > 0 ? Math.PI : 0)) * 3;
-    limb([X(px + s * 1.4), Y(py + 4)], [X(px + s * 1.4 + step * 0.6), Y(py + 9)], [X(px + s * 1.2 + step), Y(py + 14)], u * 3, u * 2.6, u * 2.2); shape("#7FA4D6");
+    const up = 0.25 + open * 0.55 + Math.sin(t * 1.3 + s) * 0.05;
+    const sh = [s * 8, -34], a1 = s > 0 ? -up * 0.5 : Math.PI + up * 0.5, a2 = s > 0 ? -up * 0.8 : Math.PI + up * 0.8;
+    const el = [sh[0] + Math.cos(a1) * 13, sh[1] + Math.sin(a1) * 13], wr = [el[0] + Math.cos(a2) * 12, el[1] + Math.sin(a2) * 12];
+    limb([X(sh[0]), Y(sh[1])], [X(el[0]), Y(el[1])], [X(wr[0]), Y(wr[1])], k * 3.6, k * 2.6, k * 2);
+    g.fillStyle = skinG(sh[0], sh[1] - 2, sh[0], sh[1] + 4); g.fill();
+    hand(X(wr[0]), Y(wr[1]), a2, k * 1.5, 0.15 + open * 0.1, "rgb(222,170,140)");
   }
-  // body: a striped jumper
-  const body = () => { g.beginPath(); g.moveTo(X(px - 4), Y(py - 8)); g.quadraticCurveTo(X(px), Y(py - 9.5), X(px + 4), Y(py - 8)); g.lineTo(X(px + 3.4), Y(py + 5)); g.lineTo(X(px - 3.4), Y(py + 5)); g.closePath(); };
-  body(); shape("#E9578B");
-  g.save(); body(); g.clip();
-  for (let k = 0; k < 9; k++) { g.fillStyle = stripes[k % 5]; g.fillRect(X(px - 5), Y(py - 7 + k * 1.5), 10 * u, 0.6 * u); }
-  g.restore();
-  // arms flung out, sleeves striped, hands open
-  for (const s of [-1, 1]) {
-    const sh = [px + s * 3.6, py - 7.5], up = open * 0.9 + Math.sin(t * 1.7 + s) * 0.08;
-    const a1 = s > 0 ? -up * 0.6 : Math.PI + up * 0.6, a2 = s > 0 ? -up * 0.9 : Math.PI + up * 0.9;
-    const el = [sh[0] + Math.cos(a1) * 6, sh[1] + Math.sin(a1) * 6], wr = [el[0] + Math.cos(a2) * 5.5, el[1] + Math.sin(a2) * 5.5];
-    limb([X(sh[0]), Y(sh[1])], [X(el[0]), Y(el[1])], [X(wr[0]), Y(wr[1])], u * 2.4, u * 2, u * 1.7); shape("#F28A3B");
-    g.save(); limb([X(sh[0]), Y(sh[1])], [X(el[0]), Y(el[1])], [X(wr[0]), Y(wr[1])], u * 2.4, u * 2, u * 1.7); g.clip();
-    for (let k = 0; k < 12; k++) { const p = k / 12, x = sh[0] + (wr[0] - sh[0]) * p, y = sh[1] + (wr[1] - sh[1]) * p; g.save(); g.translate(X(x), Y(y)); g.rotate(a1 + Math.PI / 2); g.fillStyle = stripes[k % 5]; g.fillRect(-2 * u, -0.25 * u, 4 * u, 0.5 * u); g.restore(); }
-    g.restore();
-    hand(X(wr[0]), Y(wr[1]), a2, u * 0.8, 0.2, skin);
+  // bare shoulders and back, with thin straps
+  g.beginPath(); g.moveTo(X(-9), Y(-33)); g.quadraticCurveTo(X(0), Y(-37), X(9), Y(-33)); g.lineTo(X(7), Y(-20)); g.lineTo(X(-7), Y(-20)); g.closePath();
+  g.fillStyle = skinG(-8, -36, 8, -22); g.fill();
+  // the dress: a fitted bodice and a full skirt that the wind presses and lifts
+  const lift = wind * 6, dress = () => {
+    g.beginPath(); g.moveTo(X(-7.5), Y(-27)); g.quadraticCurveTo(X(0), Y(-29), X(7.5), Y(-27)); g.lineTo(X(6.5), Y(-12));
+    g.bezierCurveTo(X(10 + lift * 0.5), Y(-4), X(14 + lift), Y(6), X(17 + lift * 1.6), Y(16 - lift * 0.4));
+    for (let i = 1; i <= 8; i++) { const p = i / 8; g.lineTo(X(17 + lift * 1.6 - p * 33 + lift * Math.sin(p * 3) * 0.6), Y(16 - lift * 0.4 * (1 - p) + Math.sin(p * 9 + t * 4) * 1.2)); }
+    g.bezierCurveTo(X(-13 + lift * 0.2), Y(4), X(-10), Y(-4), X(-6.5), Y(-12)); g.closePath();
+  };
+  dress();
+  const dg = g.createLinearGradient(X(-16), 0, X(18), 0);
+  dg.addColorStop(0, "rgb(252,250,244)"); dg.addColorStop(0.55, "rgb(236,232,222)"); dg.addColorStop(1, "rgb(186,182,184)");
+  g.fillStyle = dg; g.fill();
+  g.save(); dress(); g.clip(); // folds and brush marks in the cloth
+  g.lineCap = "round";
+  for (let i = 0; i < 7; i++) { const fx = -9 + i * 3.6; g.strokeStyle = `rgba(160,156,168,${0.35 + r() * 0.2})`; g.lineWidth = k * (0.6 + r() * 0.8); g.beginPath(); g.moveTo(X(fx * 0.4), Y(-11)); g.quadraticCurveTo(X(fx * 0.8 + lift * 0.4), Y(2), X(fx * 1.3 + lift * 1.1), Y(17)); g.stroke(); }
+  for (let i = 0; i < 70; i++) { g.globalAlpha = 0.25; brush(X(-14 + r() * 30), Y(-26 + r() * 42), k * (1 + r() * 1.5), k * 0.35, 1.2 + (r() - 0.5) * 0.5, paint(r() < 0.5 ? [255, 255, 250] : [200, 196, 204], 10, r)); }
+  g.globalAlpha = 1; g.restore();
+  g.strokeStyle = "rgb(236,232,222)"; g.lineWidth = k * 0.9; for (const s of [-1, 1]) { g.beginPath(); g.moveTo(X(s * 5), Y(-27)); g.lineTo(X(s * 6), Y(-34.5)); g.stroke(); }
+  // a sash tied at the back, its ends flying
+  g.fillStyle = "rgb(196,96,74)"; g.fillRect(X(-6.8), Y(-14), k * 13.6, k * 2.2);
+  for (const e of [0, 1]) { g.beginPath(); g.moveTo(X(0), Y(-13)); g.quadraticCurveTo(X(5 + wind * 5), Y(-10 + e * 3), X(9 + wind * 9 + Math.sin(t * 6 + e) * 1.5), Y(-7 + e * 4)); g.lineWidth = k * 1.3; g.strokeStyle = e ? "rgb(170,78,60)" : "rgb(206,110,84)"; g.stroke(); }
+  // head from behind, and long hair streaming out to the side in the wind
+  g.beginPath(); g.ellipse(X(0), Y(-42), 5.2 * k, 6 * k, 0, 0, TAU);
+  const hg = g.createLinearGradient(X(-5), Y(-48), X(5), Y(-36)); hg.addColorStop(0, "rgb(120,78,44)"); hg.addColorStop(1, "rgb(52,32,22)"); g.fillStyle = hg; g.fill();
+  for (let i = 0; i < 46; i++) {
+    const sx = -4.5 + r() * 9, sy = -44 + r() * 7, len = 14 + r() * 12, flow = 0.4 + wind * 0.6 + S.mid * 0.4;
+    g.strokeStyle = paint(r() < 0.3 ? [168, 116, 66] : [86, 54, 32], 24, r); g.lineWidth = k * (0.4 + r() * 0.6);
+    g.beginPath(); g.moveTo(X(sx), Y(sy));
+    g.bezierCurveTo(X(sx + 2), Y(sy + len * 0.4), X(sx + len * flow * 0.6), Y(sy + len * (0.75 - flow * 0.2) + Math.sin(t * 3 + i) * 1.2), X(sx + len * flow), Y(sy + len * (0.9 - flow * 0.45) + Math.sin(t * 4 + i * 0.7) * 2)); g.stroke();
   }
-  // head tipped back in the sun
-  g.beginPath(); g.ellipse(X(px - 0.2), Y(py - 12.5), 2.5 * u, 2.9 * u, -0.5, 0, TAU); shape(skin);
-  g.beginPath(); g.arc(X(px + 0.8), Y(py - 13), 2.6 * u, -1.3, 1.6); shape("#1A1412");
-  g.beginPath(); g.arc(X(px - 1.2), Y(py - 13.2), 0.9 * u, Math.PI * 0.1, Math.PI * 0.9); shape(null, "#9A4A3A", u * 0.3); // a smile
+  // a daisy tucked behind her ear
+  for (let p = 0; p < 8; p++) { const a = p * TAU / 8; g.beginPath(); g.ellipse(X(-4.6 + Math.cos(a) * 1.3), Y(-44 + Math.sin(a) * 1.3), k * 1, k * 0.45, a, 0, TAU); g.fillStyle = "rgb(252,250,244)"; g.fill(); }
+  g.beginPath(); g.arc(X(-4.6), Y(-44), k * 0.7, 0, TAU); g.fillStyle = "rgb(240,190,40)"; g.fill();
   g.lineCap = "butt";
-  // front rows: big flowers that sweep in front of the runner
-  for (let r = 0; r < 4; r++) drawRow(60 + r * 9, u * (2.8 + r * 1.3), 16 - r * 2, 50 + r * 7, 6 + r);
-  // petals blown off on the beat
-  field.petals = field.petals.filter(p => (p.life -= dt) > 0);
-  field.petals.forEach(p => { p.x += (p.vx + windAt(p.x, 0) * 40) * dt; p.y += p.vy * dt; p.vy += 20 * dt; p.a += dt * 4; g.beginPath(); g.ellipse(p.x, p.y, 4, 2.2, p.a, 0, TAU); shape("#F9DD3A"); });
+}
+function meadowScene(t, dt, box) {
+  const h = box.h, w = Math.min(box.w, h * 0.8), x0 = box.x + (box.w - w) / 2, y0 = box.y, hz = h * 0.4;
+  const key = Math.round(w) + "x" + Math.round(h) + "@" + DPR;
+  if (meadow.key !== key) {
+    meadow.key = key;
+    meadow.sky = paintSky(w, hz + 4, 12, [78, 132, 204], [150, 190, 228], [222, 230, 232]);
+    meadow.clouds = [0, 1, 2, 3].map(i => ({ c: paintCloud(w * (0.45 + (i % 2) * 0.2), w * (0.22 + (i % 2) * 0.06), 80 + i, false), x: [0.0, 0.5, 0.2, 0.7][i], y: [0.04, 0.12, 0.3, 0.42][i], v: 0.008 + i * 0.003 }));
+    meadow.hills = offscreen(w, h * 0.16, (fw, fh) => { // far hills and a dark line of trees, hazy blue-green
+      const r = seeded(14);
+      for (const [lvl, col] of [[0.25, [132, 160, 170]], [0.55, [96, 128, 104]]]) {
+        g.beginPath(); g.moveTo(0, fh);
+        for (let i = 0; i <= 30; i++) g.lineTo(i * fw / 30, fh * (lvl + Math.sin(i * 0.5 + lvl * 9) * 0.12 + Math.sin(i * 1.7) * 0.05));
+        g.lineTo(fw, fh); g.closePath(); g.fillStyle = `rgb(${col})`; g.fill();
+        for (let i = 0; i < fw * 1.5; i++) { const x = r() * fw, y = fh * (lvl + 0.1 + r() * (0.9 - lvl)); brush(x, y, 2 + r() * 3, 1 + r(), (r() - 0.5) * 0.6, paint(col, 22, r)); }
+      }
+      for (let i = 0; i < 26; i++) { const x = r() * fw, y = fh * (0.62 + r() * 0.2), s = fh * (0.08 + r() * 0.1); for (let j = 0; j < 14; j++) brush(x + (r() - 0.5) * s, y - r() * s, s * 0.3, s * 0.2, r() * 3, paint([58, 84, 62], 20, r)); }
+    });
+    const gh = h - hz;
+    meadow.ground = offscreen(w, gh, (fw, fh) => { // the field itself: a sea of yellow, strokes growing bigger towards us
+      const r = seeded(21);
+      const gr = g.createLinearGradient(0, 0, 0, fh); gr.addColorStop(0, "rgb(206,196,96)"); gr.addColorStop(0.3, "rgb(238,204,44)"); gr.addColorStop(1, "rgb(196,170,40)");
+      g.fillStyle = gr; g.fillRect(0, 0, fw, fh);
+      for (let i = 0; i < fw * fh / 14; i++) {
+        const y = fh * Math.pow(r(), 1.3), x = r() * fw, d = y / fh, sz = 1.2 + d * d * 9, n = fbm(x * 0.02 / (0.3 + d), y * 0.05);
+        const c = n < 0.38 ? [96, 126, 50] : n > 0.62 ? [255, 234, 100] : [242, 206, 38];
+        brush(x, y, sz * (1 + r()), sz * 0.45, (r() - 0.5) * 0.7, paint(mixc(c, [214, 214, 190], (1 - d) * 0.35), 26, r));
+      }
+    });
+    const s = Math.round(h * 0.16);
+    meadow.sprites = [0, 1, 2, 3, 4, 5].map(i => paintClump(s, 100 + i));
+    const r = seeded(4); meadow.clumps = [];
+    for (let row = 0; row < 26; row++) { // rows from the horizon to the front, bigger and fewer as they come closer
+      const d = Math.pow((row + 1) / 26, 1.6), n = Math.round(30 - d * 20);
+      for (let i = 0; i < n; i++) meadow.clumps.push({ x: (i + r()) / n, d: d * (0.97 + r() * 0.06), sp: Math.floor(r() * 6), ph: r() * TAU });
+    }
+    meadow.clumps.sort((a, b) => a.d - b.d);
+  }
+  spring(meadow.wind, dt, 3, 1.2);
+  if (meadow.gust >= 0) { meadow.gust += dt * 0.7; if (meadow.gust > 1.4) meadow.gust = -1; }
+  const windAt = (fx, ph) => {
+    const gu = meadow.gust >= 0 ? Math.exp(-Math.pow((fx - meadow.gust) * 5, 2)) : 0;
+    return Math.sin(fx * 6 - t * 1.8 + ph * 0.3) * (0.1 + S.mid * 0.18) + gu * 0.32 + meadow.wind.x * 0.12;
+  };
+  g.save(); g.beginPath(); g.rect(x0, y0, w, h); g.clip();
+  blit(meadow.sky, x0, y0);
+  meadow.clouds.forEach(cl => { cl.x += dt * cl.v * (0.5 + S.mid); if (cl.x > 1.05) cl.x = -cl.c.w / w; blit(cl.c, Math.round(x0 + cl.x * w), Math.round(y0 + cl.y * hz)); });
+  blit(meadow.hills, x0, y0 + hz - h * 0.12);
+  blit(meadow.ground, x0, y0 + hz);
+  // the girl stands in the middle distance; clumps behind her are drawn first, the nearer ones over her legs
+  const girlD = 0.38, sprite = meadow.sprites[0], wind = windAt(0.5, 0) * 2.2 + 0.25;
+  const open = Math.min(1, 0.3 + Math.sin(t * 0.7) * 0.15 + S.mid * 0.6 + S.bass * 0.3);
+  const gx = x0 + w * (0.48 + Math.sin(t * 0.13) * 0.04), gy = y0 + hz + (h - hz) * girlD;
+  let girlDone = false;
+  for (const c of meadow.clumps) {
+    if (!girlDone && c.d > girlD + 0.03) { drawGirl(gx, gy, h * 0.0042, t, open, wind); girlDone = true; }
+    const sc = 0.07 + c.d * c.d * 1.55, sp = meadow.sprites[c.sp], cw = sp.w * sc, ch = sp.h * sc;
+    const bx = x0 + c.x * w, by = y0 + hz + (h - hz) * c.d + ch * 0.25;
+    if (bx < x0 - cw || bx > x0 + w + cw) continue;
+    const lean = windAt(c.x, c.ph) * (0.6 + c.d * 0.6) + S.spec[c.sp * 2] * 0.05;
+    g.save(); g.translate(bx, by); g.rotate(lean); g.drawImage(sp, -cw / 2, -ch, cw, ch); g.restore();
+  }
+  if (!girlDone) drawGirl(gx, gy, h * 0.0042, t, open, wind);
+  // flowers torn loose by the gusts, tumbling past
+  meadow.petals = meadow.petals.filter(p => (p.life -= dt) > 0 && p.x < x0 + w + 20);
+  meadow.petals.forEach(p => {
+    p.x += (p.vx + windAt((p.x - x0) / w, 0) * 160) * dt; p.y += p.vy * dt; p.vy += (12 - p.vy * 0.5) * dt; p.a += dt * 5;
+    g.save(); g.translate(p.x, p.y); g.rotate(p.a);
+    for (let q = 0; q < 4; q++) { g.beginPath(); g.ellipse(Math.cos(q * TAU / 4) * p.s, Math.sin(q * TAU / 4) * p.s, p.s * 1.1, p.s * 0.65, q * TAU / 4, 0, TAU); g.fillStyle = q % 2 ? "rgb(250,222,60)" : "rgb(230,186,30)"; g.fill(); }
+    g.restore();
+  });
   g.restore();
 }
-function fieldBeat() {
-  field.gust = 0; field.wind.v += 1 + S.bass;
-  if (W) for (let k = 0; k < 6; k++) field.petals.push({ x: W * (0.2 + Math.random() * 0.4), y: H * (0.4 + Math.random() * 0.3), vx: 40 + Math.random() * 60, vy: -60 - Math.random() * 60, a: Math.random() * TAU, life: 2.5 });
+function meadowBeat() {
+  meadow.gust = 0; meadow.wind.v += 0.8 + S.bass;
+  if (W) for (let k = 0; k < 5; k++) meadow.petals.push({ x: W * (0.25 + Math.random() * 0.3), y: H * (0.35 + Math.random() * 0.4), vx: 30 + Math.random() * 50, vy: -30 - Math.random() * 40, a: Math.random() * TAU, s: 2 + Math.random() * 3, life: 4 });
 }
 
 const ARTS = {
@@ -1636,8 +1843,8 @@ const ARTS = {
   manton: { scene: mantonScene },
   feria: { scene: feriaScene },
   sun: { scene: sunScene },
-  tree: { scene: treeScene },
-  field: { scene: fieldScene }
+  heaven: { scene: heavenScene },
+  meadow: { scene: meadowScene }
 };
 const K = { spin: 0, punch: 0 };
 function onBeat() {
@@ -1650,7 +1857,7 @@ function onBeat() {
   if (art === "loom") loom.spark = 2;
   if (art === "moon") dancerBeat();
   if (art === "sun" && Math.random() < 0.4) sun.birds.push({ x: -50, y: 20 + Math.random() * 30, v: 8 + Math.random() * 6, p: Math.random() * 6 });
-  if (art === "field") fieldBeat();
+  if (art === "meadow") meadowBeat();
   if (art === "manton") { manton.fr.v += manton.side * (1.4 + S.bass); manton.ang.v += manton.side * 0.6; manton.side *= -1; }
   if (art === "feria") { feria.wave = 0; feria.splash = 1; feria.palm.v += (Math.random() < 0.5 ? -1 : 1) * (0.6 + S.bass); }
 }
