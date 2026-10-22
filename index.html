@@ -2259,28 +2259,66 @@ function guitaristScene(t, dt, box) {
   g.restore();
   // his head bowed far forward over the strings, eyes shut, a long grey beard
   const nod = guitarist.nod.x * 0.05 + Math.sin(t * 0.45) * 0.02 + guitarist.pluck * 0.015;
-  tube([P(28.5, 26), P(26.5, 30), P(24, 32)], [u * 4.4, u * 3.8, u * 3.6], BSKIN, LIGHT, u * 0.35); // his neck, corded and thin
-  g.save(); g.translate(X(20.5), Y(30)); g.rotate(0.5 + nod); g.scale(u, u); g.lineCap = "round";
-  const skull = () => { g.beginPath(); g.moveTo(-3.6, 3.4); g.bezierCurveTo(-4.6, 0, -4.4, -5.4, -1.2, -7.2); g.bezierCurveTo(2, -8.4, 5.4, -6, 5.2, -2); g.bezierCurveTo(5.1, 0.8, 4.4, 2.6, 3.6, 3.2); g.quadraticCurveTo(0, 4.4, -3.6, 3.4); g.closePath(); };
-  g.strokeStyle = `rgb(${BSKIN.line})`; g.lineWidth = 0.4; skull(); g.stroke();
-  paintedFill(skull, BSKIN.light, BSKIN.dark, 1.2, 74, 70, 0.8, -3, -6, 4, 4);
-  for (let k = 0; k < 14; k++) { const a = -1.4 + k * 0.17; g.strokeStyle = k % 3 ? `rgba(${BLUE.pale},0.8)` : `rgba(${BLUE.light},0.8)`; g.lineWidth = 0.22; g.beginPath(); g.moveTo(0.6 + Math.cos(a) * 3.2, -1 + Math.sin(a) * 5.4); g.quadraticCurveTo(0.6 + Math.cos(a) * 4.8, -1 + Math.sin(a) * 6.8, 0.6 + Math.cos(a + 0.2) * 4.6, -0.4 + Math.sin(a + 0.2) * 6.6); g.stroke(); } // thin grey hair
-  // the face, turned down and towards us: deep sockets, long nose, hollow cheeks
-  g.fillStyle = `rgba(${BSKIN.dark},0.6)`;
-  g.beginPath(); g.ellipse(-2.2, -0.4, 1.5, 1.1, 0.2, 0, TAU); g.fill(); g.beginPath(); g.ellipse(1.3, -0.6, 1.1, 0.9, 0, 0, TAU); g.fill(); // eye sockets
-  g.beginPath(); g.ellipse(-3.2, 2.8, 0.9, 1.9, 0.1, 0, TAU); g.fill(); g.beginPath(); g.ellipse(2.6, 2.4, 0.7, 1.6, -0.1, 0, TAU); g.fill(); // hollow cheeks
-  g.fillStyle = `rgba(${BSKIN.light},0.85)`; g.beginPath(); g.ellipse(-2.6, 1.2, 0.9, 0.35, -0.2, 0, TAU); g.fill(); g.beginPath(); g.ellipse(-0.6, -2.6, 2.4, 0.6, 0, 0, TAU); g.fill(); // cheekbone and brow catching light
-  g.strokeStyle = `rgb(${BSKIN.line})`;
-  g.lineWidth = 0.3; g.beginPath(); g.moveTo(-3.3, -0.3); g.quadraticCurveTo(-2.2, 0.3, -1.1, -0.2); g.moveTo(0.5, -0.4); g.quadraticCurveTo(1.3, 0.1, 2.1, -0.4); g.stroke(); // closed lids
-  g.lineWidth = 0.32; g.beginPath(); g.moveTo(-0.6, -1); g.bezierCurveTo(-0.5, 1, -1.2, 2.8, -1.6, 3.8); g.quadraticCurveTo(-0.9, 4.3, -0.2, 3.9); g.stroke(); // a long nose
-  g.strokeStyle = `rgba(${BSKIN.light},0.9)`; g.lineWidth = 0.28; g.beginPath(); g.moveTo(-1, -0.8); g.bezierCurveTo(-1, 1, -1.5, 2.6, -1.9, 3.6); g.stroke();
-  g.beginPath(); g.ellipse(4.6, 0.2, 0.8, 1.5, 0.1, 0, TAU); g.fillStyle = `rgb(${BSKIN.mid})`; g.fill(); g.strokeStyle = `rgb(${BSKIN.line})`; g.lineWidth = 0.2; g.stroke(); // ear
-  // beard and moustache in long grey strokes, falling over the guitar
-  const beard = () => { g.beginPath(); g.moveTo(-4, 3.2); g.quadraticCurveTo(-1.5, 4.6, 0.4, 4.2); g.quadraticCurveTo(3, 3.8, 3.8, 3); g.quadraticCurveTo(3.4, 9, 0.2, 13.5 + breathe * 0.3); g.quadraticCurveTo(-3.4, 9, -4, 3.2); g.closePath(); };
-  g.strokeStyle = `rgb(${BSKIN.line})`; g.lineWidth = 0.3; beard(); g.stroke();
-  paintedFill(beard, [170, 184, 200], [70, 88, 112], 1.6, 76, 60, 1, 0, 3, 0, 13);
-  for (let k = 0; k < 16; k++) { const sx = -3.4 + k * 0.45; g.strokeStyle = k % 2 ? `rgba(${BLUE.pale},0.75)` : `rgba(${BLUE.dark},0.55)`; g.lineWidth = 0.14; g.beginPath(); g.moveTo(sx, 3.6); g.quadraticCurveTo(sx * 0.7, 7.5, sx * 0.25 + 0.2, 11.5 + (k % 4) * 0.5); g.stroke(); }
-  g.strokeStyle = `rgb(${BSKIN.line})`; g.lineWidth = 0.22; g.beginPath(); g.moveTo(-2.4, 4.3); g.quadraticCurveTo(-1, 4.1, 0.6, 4.4); g.stroke(); // mouth under the moustache
+  tube([P(29, 25.5), P(27, 29), P(24.5, 31)], [u * 4.2, u * 3.6, u * 3.4], BSKIN, LIGHT, u * 0.35); // his neck, corded and thin
+  // his head, bowed so low we see it almost in profile, face turned down towards the strings
+  const hc = [21, 30.5], rot = -0.93 + nod;
+  const H2 = (lx, ly) => [X(hc[0]) + (Math.cos(rot) * lx - Math.sin(rot) * ly) * u, Y(hc[1]) + (Math.sin(rot) * lx + Math.cos(rot) * ly) * u]; // head space → screen
+  g.save(); g.translate(X(hc[0]), Y(hc[1])); g.rotate(rot); g.scale(u, u); g.lineCap = "round"; g.lineJoin = "round";
+  // the profile: crown, forehead, brow, a long hooked nose, the cheek falling into the beard, jaw, back of the skull
+  const profile = () => {
+    g.beginPath(); g.moveTo(4.2, 3.6);
+    g.bezierCurveTo(6.2, 1, 6.4, -4.6, 3.4, -6.6); // back of the skull
+    g.bezierCurveTo(1.2, -8, -2, -7.6, -3.2, -5.4); // crown to forehead
+    g.quadraticCurveTo(-3.9, -3.6, -3.7, -2.2); // forehead
+    g.quadraticCurveTo(-4.3, -1.7, -3.9, -1); // brow ridge
+    g.quadraticCurveTo(-3.6, -0.7, -4, 0.2); // bridge of the nose
+    g.lineTo(-5.5, 2.3); g.quadraticCurveTo(-5.4, 2.9, -4.5, 2.8); // nose tip
+    g.quadraticCurveTo(-4.1, 3.3, -3.9, 3.6); // under the nose
+    g.quadraticCurveTo(-3.6, 4.6, -3.2, 5.6); // lips, chin
+    g.quadraticCurveTo(-1, 6.4, 1.6, 5.2); // jaw
+    g.quadraticCurveTo(3, 4.6, 4.2, 3.6); g.closePath();
+  };
+  g.strokeStyle = `rgb(${BSKIN.line})`; g.lineWidth = 0.42; profile(); g.stroke();
+  paintedFill(profile, BSKIN.light, BSKIN.dark, 0.4, 74, 110, 0.75, -4, -3, 4, 4);
+  g.save(); profile(); g.clip();
+  const sh = (x, y, rx, ry, a, col) => { g.beginPath(); g.ellipse(x, y, rx, ry, a, 0, TAU); g.fillStyle = col; g.fill(); };
+  sh(-2.6, -1.1, 1.2, 0.8, 0.3, `rgba(${BSKIN.dark},0.75)`); // deep eye socket under the brow
+  sh(-1.9, 2.4, 1.3, 1.9, 0.2, `rgba(${BSKIN.dark},0.6)`); // hollow cheek
+  sh(-2.4, 0.7, 1.1, 0.45, -0.3, `rgba(${BSKIN.light},0.8)`); // cheekbone in the light
+  sh(-2.4, -4.4, 1.4, 1.6, 0.3, `rgba(${BSKIN.light},0.6)`); // light on the forehead
+  sh(3.4, -1, 2.4, 4.6, 0.1, `rgba(${BSKIN.dark},0.55)`); // the back of the head in shadow
+  // thin grey hair at the temple and over the ear, combed back
+  for (let k = 0; k < 34; k++) { const a = -2.6 + k * 0.1, r0 = 3.6 + (k % 3) * 0.5; g.strokeStyle = k % 2 ? `rgba(${BLUE.pale},0.75)` : `rgba(${BLUE.light},0.65)`; g.lineWidth = 0.16;
+    g.beginPath(); g.moveTo(1 + Math.cos(a) * r0 * 0.6, -1.4 + Math.sin(a) * r0); g.quadraticCurveTo(2 + Math.cos(a) * r0, -1 + Math.sin(a) * r0 * 1.1, 3 + Math.cos(a + 0.3) * r0, -0.6 + Math.sin(a + 0.3) * r0); g.stroke(); }
+  g.restore();
+  // closed eye: a heavy lid and a line of lashes
+  g.strokeStyle = `rgb(${BSKIN.line})`; g.lineWidth = 0.28; g.beginPath(); g.moveTo(-3.4, -0.9); g.quadraticCurveTo(-2.6, -0.4, -1.8, -0.9); g.stroke();
+  g.lineWidth = 0.14; g.beginPath(); g.moveTo(-3.2, -1.5); g.quadraticCurveTo(-2.5, -1.9, -1.8, -1.4); g.stroke(); // the fold of the lid
+  g.lineWidth = 0.22; g.beginPath(); g.moveTo(-3.6, -2.1); g.quadraticCurveTo(-2.6, -2.5, -1.4, -2); g.stroke(); // brow
+  g.beginPath(); g.moveTo(-4.4, 2.6); g.quadraticCurveTo(-4, 2.4, -3.8, 2.8); g.stroke(); // nostril
+  g.lineWidth = 0.14; g.beginPath(); g.moveTo(-3.6, 1); g.quadraticCurveTo(-3, 2.6, -3.6, 3.4); g.stroke(); // the crease beside the nose
+  g.strokeStyle = `rgba(${BSKIN.light},0.9)`; g.lineWidth = 0.22; g.beginPath(); g.moveTo(-3.9, -0.4); g.lineTo(-5, 1.8); g.stroke(); // light down the nose
+  // the ear, half under his hair
+  g.beginPath(); g.ellipse(1.9, -0.2, 0.85, 1.45, 0.2, 0, TAU); g.fillStyle = `rgb(${BSKIN.mid})`; g.fill(); g.strokeStyle = `rgb(${BSKIN.line})`; g.lineWidth = 0.18; g.stroke();
+  g.beginPath(); g.arc(1.9, -0.2, 0.5, -1.2, 1.6); g.stroke();
+  g.restore();
+  // the beard and moustache hang straight down from the face: long, thin and grey
+  const lipP = H2(-3.9, 3.6), chinP = H2(-3, 5.6), jawP = H2(1.4, 5.2), cheekP = H2(-1.6, 3);
+  const beard = () => {
+    g.beginPath(); g.moveTo(...lipP);
+    g.quadraticCurveTo(lipP[0] - u * 1.6, lipP[1] + u * 4, lipP[0] - u * 0.2 + Math.sin(t * 0.6) * u * 0.25, lipP[1] + u * 11 + breathe * u * 0.3); // the long point
+    g.quadraticCurveTo(chinP[0] + u * 2.4, chinP[1] + u * 6, jawP[0] + u * 0.4, jawP[1] + u * 0.8);
+    g.quadraticCurveTo(cheekP[0] + u * 0.6, cheekP[1], ...lipP); g.closePath();
+  };
+  g.strokeStyle = `rgb(${BSKIN.line})`; g.lineWidth = u * 0.3; beard(); g.stroke();
+  paintedFill(beard, [176, 190, 206], [76, 94, 118], Math.PI / 2, 76, 70, u * 0.9, lipP[0], lipP[1], jawP[0], jawP[1] + u * 4);
+  g.save(); beard(); g.clip();
+  const rb = seeded(79);
+  for (let k = 0; k < 26; k++) { // wiry strands falling down
+    const sx = lipP[0] + (jawP[0] - lipP[0]) * rb(), sy = lipP[1] + (jawP[1] - lipP[1]) * rb() - u * 0.5, l = u * (4 + rb() * 7);
+    g.strokeStyle = rb() < 0.5 ? `rgba(${BLUE.pale},0.7)` : `rgba(${BLUE.dark},0.5)`; g.lineWidth = u * (0.1 + rb() * 0.12);
+    g.beginPath(); g.moveTo(sx, sy); g.quadraticCurveTo(sx - u * 0.6 + rb() * u, sy + l * 0.5, sx - u * 0.4 + rb() * u * 0.6, sy + l); g.stroke();
+  }
   g.restore();
   // his right arm: shoulder high on the hunched back, a sharp elbow, the forearm lying across the guitar
   const handR = G(0.2, 6.6), elR = [56 + breathe * 0.3, 47];
