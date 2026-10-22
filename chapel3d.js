@@ -11,7 +11,7 @@ const CH3 = { ready: false };
 
 // ---- the stained glass, painted once: medallions, mosaic grounds, borders, grisaille, lead cames ----
 // window space in metres: two lancets and a rose
-const CH3W = { L: [[-1.0, -0.15], [0.15, 1.0]], sill: 2.3, spring: 4.5, rose: [0, 5.85, 0.45], box: [-1.05, 2.25, 1.05, 6.35] };
+const CH3W = { L: [[-1.0, -0.15], [0.15, 1.0]], sill: 1.95, spring: 4.15, rose: [0, 5.5, 0.45], box: [-1.05, 1.9, 1.05, 6.0] };
 function ch3Lancet(P, a, b) { const w = b - a, s = CH3W.spring; P.moveTo(a, CH3W.sill); P.lineTo(b, CH3W.sill); P.lineTo(b, s); P.absarc(a, s, w, 0, Math.PI / 3, false); P.absarc(b, s, w, Math.PI * 2 / 3, Math.PI, false); P.lineTo(a, CH3W.sill); }
 function ch3Glass(ppm) {
   const [bx0, by0, bx1, by1] = CH3W.box, W = Math.round((bx1 - bx0) * ppm), H = Math.round((by1 - by0) * ppm);
@@ -193,7 +193,7 @@ function ch3Build() {
 
   // ---- the sun through the glass: a projector light shaped and coloured by the window ----
   const sunDir = new T.Vector3(0.12, -0.88, 0.4).normalize();
-  const wc = new T.Vector3(0, 4.3, -0.3);
+  const wc = new T.Vector3(0, 3.95, -0.3);
   const sun = new T.SpotLight(0xfff2dc, 7.0, 0, 0.12, 0.0, 0);
   sun.position.copy(wc).addScaledVector(sunDir, -22); sun.target.position.copy(wc); scene.add(sun, sun.target);
   sun.castShadow = true; sun.shadow.mapSize.set(2048, 2048); sun.shadow.camera.near = 12; sun.shadow.camera.far = 40; sun.shadow.bias = -0.0004; sun.shadow.normalBias = 0.02;
@@ -210,7 +210,7 @@ function ch3Build() {
   CH3.sun = sun; CH3.VP = VP;
 
   // soft daylight from the window filling the embrasure and the wall, and the dim nave
-  const fill = new T.PointLight(0xb8c8e8, 0.3, 8, 2); fill.position.set(0, 4.3, 0.6); scene.add(fill);
+  const fill = new T.PointLight(0xb8c8e8, 0.3, 8, 2); fill.position.set(0, 3.95, 0.6); scene.add(fill);
   scene.add(new T.HemisphereLight(0x9aa6b8, 0x2a2420, 0.05));
   // light bouncing up off the coloured pool on the floor: the only thing that reaches the altar front
   const bounce = new T.PointLight(0xa89cc0, 0.35, 5, 2); bounce.position.set(0.5, 0.25, 2.6); scene.add(bounce); CH3.bounce = bounce;
@@ -231,7 +231,7 @@ function ch3Build() {
         float fade = exp(-vW.z * .22) * smoothstep(0., .5, vW.z);
         gl_FragColor = vec4(col * haze * fade * .05 * uI, 1.);
       }` });
-  for (let i = 0; i < 40; i++) { const z = 0.05 + i * 0.12; add(new T.PlaneGeometry(9, 9), shaftMat, 0, 4.5, z, { cast: false }).receiveShadow = false; }
+  for (let i = 0; i < 40; i++) { const z = 0.05 + i * 0.12; add(new T.PlaneGeometry(9, 9), shaftMat, 0, 4.15, z, { cast: false }).receiveShadow = false; }
 
   // ---- dust drifting through the beams ----
   const ND = 900, dpos = new Float32Array(ND * 3), rs = seeded(5);
