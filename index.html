@@ -83,6 +83,7 @@ button:disabled { color: var(--line); cursor: default; }
 <script src="lib/GLTFLoader.js"></script>
 <script src="assets/pig.js"></script>
 <script src="rain.js"></script>
+<script src="paint.js"></script>
 <script>
 // ================================================================
 // 1. THE ROOMS — five styles, each with three pieces.
@@ -3440,17 +3441,17 @@ const ARTS = {
   medallion: { draw: medallion, segments: 8, drift: 0.09, zoom: 0.36 },
   arch: { scene: archScene },
   loom: { scene: loomScene },
-  moon: { scene: moonScene },
-  manton: { scene: mantonScene },
-  feria: { scene: feriaScene },
-  sun: { scene: sunScene },
-  heaven: { scene: heavenScene },
-  lilies: { scene: liliesScene },
-  guitarist: { scene: guitaristScene },
-  scream: { scene: screamScene },
-  chapel: { scene: chapelScene },
-  kimono: { scene: kimonoScene },
-  koi: { scene: koiScene },
+  moon: { scene: moonScene, paint: "fresco" },
+  manton: { scene: mantonScene, paint: "oil" },
+  feria: { scene: feriaScene, paint: "oil" },
+  sun: { scene: sunScene, paint: "tempera" },
+  heaven: { scene: heavenScene, paint: "baroque" },
+  lilies: { scene: liliesScene, paint: "monet" },
+  guitarist: { scene: guitaristScene, paint: "blue" },
+  scream: { scene: screamScene, paint: "munch" },
+  chapel: { scene: chapelScene, paint: "night" },
+  kimono: { scene: kimonoScene, paint: "nihonga" },
+  koi: { scene: koiScene, paint: "nihonga" },
   eisho: { scene: eishoScene },
   blank: { scene: blankScene },
   mist: { scene: mistScene },
@@ -3505,7 +3506,9 @@ function render(t, dt) {
   g.clearRect(0, 0, W, H);
   if (art.scene) { // pieces ii and iii are scenes, not kaleidoscopes
     const top = 28, avail = Math.max(160, H - top - 236);
-    art.scene(t, dt, { x: 24, y: top, w: W - 48, h: avail });
+    const box = { x: 24, y: top, w: W - 48, h: avail };
+    art.scene(t, dt, box);
+    if (art.paint) paintApply(art.paint, box, t, dt); // repaint it as a painting: strokes, paint, ground
     return;
   }
   K.spin += dt * (0.04 + S.mid * 0.6);
