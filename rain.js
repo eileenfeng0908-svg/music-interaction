@@ -435,8 +435,8 @@ function pigSkin(m) {
         vec3 skin = mix(vec3(0.56, 0.34, 0.31), vec3(0.78, 0.52, 0.46), pa);                     // pink, uneven
         skin = mix(skin, vec3(0.42, 0.33, 0.33), smoothstep(0.55, 0.85, pf3(vObj * 1.8 + 7.)) * 0.6);   // grey patches
         skin = mix(skin, vec3(0.70, 0.30, 0.27), smoothstep(0.6, 0.9, pf3(vObj * 9. + 3.)) * 0.35);    // flushed blotches
-        float folds = pow(abs(sin(vObj.y * 90. + pf3(vObj * 6.) * 8.)), 6.) * smoothstep(0.4, 0.2, abs(vObj.z - 0.55));
-        skin *= 1. - folds * 0.18;                                                                  // wrinkles across the neck and flanks
+        float folds = smoothstep(0.62, 0.8, pf3(vObj * vec3(14., 5., 14.))) * 0.5;                  // a few soft creases, no pattern
+        skin *= 1. - folds * 0.08;
         skin *= 1. - smoothstep(0.72, 0.8, pc) * 0.35;                                                 // pores
         float mud = smoothstep(0.32, 0.08, vObj.z + (pf3(vObj * 7.) - .5) * 0.12);                     // legs and belly caked in wet mud
         skin = mix(skin, vec3(0.13, 0.09, 0.06) * (0.7 + 0.6 * pb), mud * 0.85);
@@ -445,7 +445,7 @@ function pigSkin(m) {
       .replace("#include <normal_fragment_maps>", `#include <normal_fragment_maps>
         vec3 bmp = vec3(pn3(vObj * 180.), pn3(vObj * 180. + 3.), pn3(vObj * 180. + 9.)) - .5;
         vec3 bmp2 = vec3(pn3(vObj * 40.), pn3(vObj * 40. + 3.), pn3(vObj * 40. + 9.)) - .5;
-        normal = normalize(normal + bmp * 0.1 + bmp2 * 0.08 + bmp2 * folds * 0.4);`)
+        normal = normalize(normal + bmp * 0.06 + bmp2 * 0.05);`)
       .replace("#include <emissivemap_fragment>", `#include <emissivemap_fragment>
         vec3 Vv = normalize(vViewPosition);
         float back = pow(max(dot(-Vv, uLv), 0.), 2.), edge = 1. - abs(dot(normal, Vv));
