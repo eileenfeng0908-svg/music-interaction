@@ -75,6 +75,10 @@ button:disabled { color: var(--line); cursor: default; }
 <script src="audio/track-4-1.js"></script>
 <script src="audio/track-5-1.js"></script>
 <script src="img/print-5-3.js"></script>
+<script src="audio/track-6-1.js"></script>
+<script src="lib/three.min.js"></script>
+<script src="lib/GLTFLoader.js"></script>
+<script src="rain.js"></script>
 <script>
 // ================================================================
 // 1. THE ROOMS — five styles, each with three pieces.
@@ -105,6 +109,11 @@ const ROOMS = [
       { sound: "file", file: "5-1", art: "kimono" },
       { sound: "generated", make: "nami",      art: "koi" },
       { sound: "generated", make: "sakura",    art: "eisho" }
+  ] },
+  { pieces: [
+      { sound: "file", file: "6-1", art: "field" },
+      { sound: "generated", make: "drizzle", art: "pond" },
+      { sound: "generated", make: "glass",   art: "pane" }
   ] },
   { label: "?", pieces: [{ sound: "generated", make: "endless", art: "mist" }] } // music that keeps changing; the wall stays empty
 ];
@@ -3440,8 +3449,12 @@ const ARTS = {
   koi: { scene: koiScene },
   eisho: { scene: eishoScene },
   blank: { scene: blankScene },
-  mist: { scene: mistScene }
+  mist: { scene: mistScene },
+  field: { scene: fieldScene },
+  pond: { scene: pondScene },
+  pane: { scene: paneScene }
 };
+COMPOSERS.drizzle = rainDrizzle; COMPOSERS.glass = rainGlass;
 const K = { spin: 0, punch: 0 };
 function onBeat() {
   K.punch = 1;
