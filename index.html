@@ -71,6 +71,7 @@ button:disabled { color: var(--line); cursor: default; }
 
 <script src="audio/track-1-1.js"></script>
 <script src="audio/track-2-1.js"></script>
+<script src="audio/track-3-1.js"></script>
 <script>
 // ================================================================
 // 1. THE ROOMS — five styles, each with three pieces.
@@ -87,7 +88,12 @@ const ROOMS = [
       { sound: "generated", make: "bulerias", art: "manton" },
       { sound: "generated", make: "tangos",   art: "feria" }
   ] },
-  null, null, null // rooms 3 to 5 arrive later
+  { pieces: [
+      { sound: "file", file: "3-1", art: "sun" },
+      { sound: "generated", make: "prelude", art: "tree" },
+      { sound: "generated", make: "sunny",   art: "field" }
+  ] },
+  null, null // rooms 4 and 5 arrive later
 ];
 let roomIndex = 0, pieceIndex = 0;
 
@@ -122,7 +128,9 @@ function base64ToBuffer(b64) {
   return out.buffer;
 }
 
+let startCount = 0;
 async function startPiece(piece) {
+  const mine = ++startCount; // if another piece is chosen while this one is still loading, let that one win
   stopPiece();
   const out = ctx.createGain();
   out.gain.value = 0;
@@ -131,6 +139,7 @@ async function startPiece(piece) {
   let stopSound;
   if (piece.sound === "file") {
     if (!decoded[piece.file]) decoded[piece.file] = await ctx.decodeAudioData(base64ToBuffer(window.TRACK_DATA[piece.file]));
+    if (mine !== startCount) { out.disconnect(); return; }
     const src = ctx.createBufferSource();
     src.buffer = decoded[piece.file];
     src.loop = true;
@@ -426,8 +435,130 @@ Object.assign(COMPOSERS, {
   }
 });
 
+// --- Room 3 instruments: harpsichord, ukulele, strings, a whistle, claps and a glockenspiel ---
+// Notes that are played are also written down here, so a picture can show which keys are pressed.
+const NOTES = [];
+function classicalKit(ctx, out) {
+  const strings = {};
+  const ksBuffer = (f, bright) => { // a plucked string (Karplus-Strong), worked out once and reused
+    const key = Math.round(f * 10) + (bright ? "b" : "");
+    if (strings[key]) return strings[key];
+    const sr = ctx.sampleRate, len = Math.floor(sr * 1.8), buf = ctx.createBuffer(1, len, sr), d = buf.getChannelData(0);
+    const p = Math.max(2, Math.round(sr / f)), loop = new Float32Array(p);
+    for (let i = 0; i < p; i++) loop[i] = Math.random() * 2 - 1;
+    const keep = bright ? 0.998 : 0.993, mix = bright ? 0.35 : 0.5;
+    for (let i = 0; i < len; i++) {
+      const j = i % p, next = loop[(j + 1) % p];
+      loop[j] = keep * ((1 - mix) * loop[j] + mix * next);
+      d[i] = loop[j];
+    }
+    return (strings[key] = buf);
+  };
+  const play = (buf, t, len, v, dest) => {
+    const s = ctx.createBufferSource(), g = ctx.createGain();
+    s.buffer = buf; g.gain.setValueAtTime(v, t); g.gain.setValueAtTime(v, t + len); g.gain.linearRampToValueAtTime(0, t + len + 0.1);
+    s.connect(g).connect(dest); s.start(t); s.stop(t + len + 0.15);
+  };
+  const noise = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate), nd = noise.getChannelData(0);
+  for (let i = 0; i < nd.length; i++) nd[i] = Math.random() * 2 - 1;
+  const noiseHit = (t, type, f, q, peak, len) => {
+    const s = ctx.createBufferSource(), fl = ctx.createBiquadFilter(), g = ctx.createGain();
+    s.buffer = noise; fl.type = type; fl.frequency.value = f; fl.Q.value = q;
+    g.gain.setValueAtTime(peak, t); g.gain.exponentialRampToValueAtTime(0.0008, t + len);
+    s.connect(fl).connect(g).connect(out); s.start(t, Math.random() * 0.5); s.stop(t + len + 0.05);
+  };
+  const hpf = ctx.createBiquadFilter(); hpf.type = "highpass"; hpf.frequency.value = 110; hpf.connect(out);
+  return {
+    // harpsichord: two bright strings, one an octave up, as on a real two-register instrument
+    harpsi(t, f, len = 0.5, v = 1) {
+      NOTES.push({ t, f, len: Math.min(len, 0.3) });
+      play(ksBuffer(f, true), t, len, 0.26 * v, hpf);
+      play(ksBuffer(f * 2, true), t + 0.003, len * 0.7, 0.07 * v, hpf);
+    },
+    uke(t, chord, dir = 1, v = 1) {
+      const notes = dir > 0 ? chord : [...chord].reverse();
+      notes.forEach((f, i) => play(ksBuffer(f, false), t + i * 0.012, 0.45, 0.22 * v, hpf));
+    },
+    kick(t) {
+      const o = ctx.createOscillator(), g = ctx.createGain();
+      o.frequency.setValueAtTime(130, t); o.frequency.exponentialRampToValueAtTime(48, t + 0.12);
+      g.gain.setValueAtTime(0.6, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.25);
+      o.connect(g).connect(out); o.start(t); o.stop(t + 0.3);
+    },
+    clap(t) { for (const o of [0, 0.007, 0.015]) noiseHit(t + o, "bandpass", 1500, 1.2, 0.3, 0.06); },
+    shaker(t, v) { noiseHit(t, "highpass", 7000, 0.7, 0.07 * v, 0.05); },
+    whistle(t, f, len) { // a whistle: pure tone that slides up into each note, with a little breath
+      const o = ctx.createOscillator(), g = ctx.createGain(), lfo = ctx.createOscillator(), depth = ctx.createGain();
+      o.frequency.setValueAtTime(f * 0.94, t); o.frequency.exponentialRampToValueAtTime(f, t + 0.05);
+      lfo.frequency.value = 6; depth.gain.value = f * 0.008; lfo.connect(depth).connect(o.frequency);
+      g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.09, t + 0.04); g.gain.setValueAtTime(0.09, t + len); g.gain.linearRampToValueAtTime(0, t + len + 0.08);
+      o.connect(g).connect(out); o.start(t); lfo.start(t); o.stop(t + len + 0.1); lfo.stop(t + len + 0.1);
+      noiseHit(t, "bandpass", f * 2, 4, 0.02, len);
+    },
+    bell(t, f, v = 1) { // music-box tine: a pure tone with a bright, slightly out-of-tune overtone
+      for (const [m, a, d] of [[1, 0.12, 1.4], [2.76, 0.04, 0.5], [5.4, 0.015, 0.25]]) {
+        const o = ctx.createOscillator(), g = ctx.createGain();
+        o.frequency.value = f * m; g.gain.setValueAtTime(a * v, t); g.gain.exponentialRampToValueAtTime(0.0005, t + d);
+        o.connect(g).connect(out); o.start(t); o.stop(t + d + 0.05);
+      }
+    }
+  };
+}
+const midi = n => 440 * Math.pow(2, (n - 69) / 12);
+// note names to MIDI numbers, e.g. "C4" = 60
+const nm = s => { const m = s.match(/^([A-G])(#|b)?(\d)$/); return 12 * (+m[3] + 1) + { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 }[m[1]] + (m[2] === "#" ? 1 : m[2] === "b" ? -1 : 0); };
+
+Object.assign(COMPOSERS, {
+  // Room 3, piece ii: a harpsichord prelude of broken chords, after the opening of Bach's Prelude in C.
+  prelude(ctx, out) {
+    const H = classicalKit(ctx, out);
+    const bars = [
+      "C4 E4 G4 C5 E5", "C4 D4 A4 D5 F5", "B3 D4 G4 D5 F5", "C4 E4 G4 C5 E5",
+      "C4 E4 A4 E5 A5", "C4 D4 F#4 A4 D5", "B3 D4 G4 D5 G5", "B3 C4 E4 G4 C5",
+      "A3 C4 E4 G4 C5", "D3 A3 D4 F#4 C5", "G3 B3 D4 G4 B4", "G3 Bb3 E4 G4 C#5",
+      "F3 A3 D4 A4 D5", "F3 Ab3 D4 F4 B4", "E3 G3 C4 G4 C5", "G3 B3 D4 F4 B4"
+    ].map(b => b.split(" ").map(s => midi(nm(s))));
+    const sixteenth = 60 / 72 / 4;
+    const stopClock = runScheduler(ctx, sixteenth, (i, t) => {
+      const s = i % 16, bar = bars[Math.floor(i / 16) % bars.length];
+      const order = [0, 1, 2, 3, 4, 2, 3, 4];
+      const n = bar[order[s % 8]];
+      H.harpsi(t, n, s % 8 < 2 ? sixteenth * 7 : sixteenth * 2.5, s % 8 === 0 ? 1.1 : 0.85);
+      if (s === 0) H.harpsi(t, bar[0] / 2, sixteenth * 15, 0.7); // a low octave under each bar
+    });
+    return () => stopClock();
+  },
+  // Room 3, piece iii: a sunny little pop song — ukulele strumming I–V–vi–IV, claps, a whistled tune and glockenspiel.
+  sunny(ctx, out) {
+    const K = classicalKit(ctx, out);
+    const eighth = 60 / 116 / 2;
+    const UKE = { C: ["G4", "C4", "E4", "C5"], G: ["G4", "D4", "G4", "B4"], Am: ["A4", "C4", "E4", "A4"], F: ["A4", "C4", "F4", "A4"] };
+    const prog = ["C", "G", "Am", "F"];
+    const PENTA = [nm("C5"), nm("D5"), nm("E5"), nm("G5"), nm("A5"), nm("C6")];
+    const newHook = () => { // an 8-note hook from the bright five-note scale, ending home on C
+      let s = 2; const m = [];
+      for (let i = 0; i < 8; i++) { s = Math.max(0, Math.min(5, s + pick([-1, -1, 1, 1, 0, 2, -2]))); m.push(Math.random() < 0.2 && i % 2 ? null : PENTA[s]); }
+      m[7] = PENTA[0]; m[6] = pick([PENTA[1], PENTA[2]]); return m;
+    };
+    let hook = newHook();
+    const stopClock = runScheduler(ctx, eighth, (i, t) => {
+      const e = i % 8, bar = Math.floor(i / 8), ch = UKE[prog[bar % 4]].map(n => midi(nm(n)));
+      // strum: down, down-up, up-down-up
+      if ([0, 2, 3, 5, 6, 7].includes(e)) K.uke(t, ch, e === 3 || e === 5 || e === 7 ? -1 : 1, e === 0 ? 1 : 0.65);
+      if (e === 0 || e === 4) K.kick(t);
+      if (e === 2 || e === 6) K.clap(t);
+      if (bar % 2 === 0 && e % 2 === 0) K.shaker(t, 0.6); else if (e % 2) K.shaker(t, 0.35);
+      // the tune: whistled on bars 1–4, glockenspiel echoes it on bars 5–8
+      const phrase = Math.floor(bar / 4) % 2, n = hook[(bar % 4) * 2 + (e >= 4 ? 1 : 0)];
+      if (e % 4 === 0 && n) { if (phrase === 0) K.whistle(t, midi(n), eighth * 3.6); else K.bell(t, midi(n + 12), 1.2); }
+      if (e === 7 && bar % 8 === 7) hook = Math.random() < 0.5 ? newHook() : hook.map((x, k) => (x && k < 6 && Math.random() < 0.3 ? pick(PENTA) : x));
+    });
+    return () => stopClock();
+  }
+});
+
 // Turn the sound into numbers the drawing can use.
-const S = { bass: 0, mid: 0, high: 0, pulse: 0, bassAvg: 0, spec: new Array(16).fill(0), rot: 0, wave: -1, lastBeat: 0 };
+const S = { bass: 0, mid: 0, high: 0, pulse: 0, bassAvg: 0, spec: new Array(16).fill(0), rot: 0, wave: -1, lastBeat: 0, pitch: 0, pitchOn: 0 };
 function listen(dt, time) {
   const quiet = !nowPlaying;
   if (!quiet) analyser.getByteFrequencyData(bins);
@@ -445,6 +576,13 @@ function listen(dt, time) {
   for (let i = 0; i < 16; i++) {
     const lo = 60 * Math.pow(8000 / 60, i / 16), hi = 60 * Math.pow(8000 / 60, (i + 1) / 16);
     S.spec[i] = ease(S.spec[i], band(lo, hi));
+  }
+  // the loudest note between 120 and 2500 Hz, as octaves above C3 (so C4 = 1, C5 = 2)
+  S.pitchOn = 0;
+  if (!quiet) {
+    const a = Math.floor(120 / hz), b = Math.floor(2500 / hz); let best = 0, bi = 0;
+    for (let i = a; i < b; i++) if (bins[i] > best) { best = bins[i]; bi = i; }
+    if (best > 110) { const l = bins[bi - 1], r = bins[bi + 1], off = (r - l) / (2 * (2 * best - l - r) || 1); S.pitch = Math.log2((bi + off) * hz / 130.81); S.pitchOn = 1; }
   }
   S.bassAvg = S.bassAvg * 0.95 + S.bass * 0.05;
   if (!quiet && S.bass > S.bassAvg * 1.15 + 0.03 && S.bass > 0.25 && time - S.lastBeat > 0.22) {
@@ -1239,6 +1377,256 @@ function feriaScene(t, dt, box) {
   g.restore();
 }
 
+// ================================================================
+// Room 3 scenes — everything bright, happy, a little hand-made
+// ================================================================
+// --- Room 3, piece i: a smiling sun that climbs as the scale climbs ---
+const sun = { y: 0.6, spin: 0, smile: 0, dabs: null, birds: [] };
+function sunScene(t, dt, box) {
+  const h = box.h, w = Math.min(box.w, h * 0.85), x0 = box.x + (box.w - w) / 2, y0 = box.y, u = h / 100, cx = x0 + w / 2;
+  const X = v => cx + v * u, Y = v => y0 + v * u;
+  if (!sun.dabs) sun.dabs = {
+    face: brushMarks(11, 160, r => { const a = r() * TAU, d = Math.sqrt(r()) * 0.92; return [Math.cos(a) * d, Math.sin(a) * d, 0.05 + r() * 0.08, 0.015 + r() * 0.02, a + 1.4, pick3(r, ["#F7B731", "#F49B22", "#FBC94A", "#F08A1C"])]; }),
+    sky: brushMarks(12, 120, r => [-45 + r() * 90, r() * 70, 1.5 + r() * 3, 0.3 + r() * 0.5, (r() - 0.5) * 0.5, pick3(r, ["#F6D9CC", "#F3CDBF", "#F8E3D6"])])
+  };
+  // the sun's height follows the pitch: low notes near the hills, high notes near the top
+  const goal = S.pitchOn ? Math.max(0, Math.min(1, (S.pitch - 0.8) / 2.6)) : 0.25;
+  sun.y += (goal - sun.y) * Math.min(1, dt * 2.5);
+  sun.spin += dt * (0.1 + S.mid * 0.6);
+  sun.smile += ((S.pitchOn ? sun.y : 0) - sun.smile) * Math.min(1, dt * 2);
+  g.save(); g.beginPath(); g.rect(x0, y0, w, h); g.clip();
+  g.fillStyle = "#F9EADF"; g.fillRect(x0, y0, w, h);
+  sun.dabs.sky.forEach(([x, y, l, wd, a, c]) => dab(X(x), Y(y), l * u, wd * u, a, c));
+  // pink watercolour-like clouds, kept as sharp shapes
+  for (const [cxp, cyp, s, sp] of [[-28, 20, 1, 0.6], [26, 32, 0.8, 0.45], [-8, 52, 0.7, 0.3]]) {
+    const ox = ((cxp + t * sp * 2 + 60) % 120) - 60;
+    g.fillStyle = "rgba(240,170,170,0.45)";
+    for (const [dx, dy, r] of [[0, 0, 6], [6, 1, 5], [-6, 1.5, 4.5], [11, 2.5, 3.5]]) { g.beginPath(); g.arc(X(ox + dx * s), Y(cyp + dy * s), r * s * u, 0, TAU); g.fill(); }
+  }
+  // the sun
+  const sy = Y(70 - sun.y * 48), R = 15 * u * (1 + S.bass * 0.05);
+  g.save(); g.translate(cx, sy);
+  for (let k = 0; k < 12; k++) { // wavy flame-shaped rays, long and short in turn
+    const a = sun.spin + k * TAU / 12, long = k % 2 === 0, e = S.spec[(k * 3) % 16];
+    const len = R * (long ? 0.95 : 0.6) * (1 + e * 0.45), wid = R * (long ? 0.2 : 0.16);
+    g.save(); g.rotate(a);
+    g.beginPath(); g.moveTo(R * 0.85, -wid);
+    g.bezierCurveTo(R + len * 0.4, -wid * 0.9 + Math.sin(t * 3 + k) * wid * 0.4, R + len * 0.7, wid * 0.3, R + len, Math.sin(t * 2 + k) * wid * 0.5);
+    g.bezierCurveTo(R + len * 0.6, wid * 0.6, R + len * 0.3, wid * 1.1, R * 0.85, wid);
+    g.closePath(); shape(long ? "#F28A1E" : "#F6A32A", "#D96A12", 1);
+    g.restore();
+  }
+  g.beginPath(); g.arc(0, 0, R, 0, TAU); shape("#F6A62A");
+  g.save(); g.beginPath(); g.arc(0, 0, R, 0, TAU); g.clip();
+  sun.dabs.face.forEach(([x, y, l, wd, a, c]) => dab(x * R, y * R, l * R, wd * R, a, c));
+  g.restore();
+  g.beginPath(); g.arc(0, 0, R, 0, TAU); shape(null, "#E2731A", u * 0.4);
+  // face: eyes closed in bliss low down, opening wide as it reaches the top
+  const open = Math.max(0, (sun.smile - 0.55) / 0.45);
+  for (const s of [-1, 1]) {
+    g.save(); g.translate(s * R * 0.36, -R * 0.08);
+    g.beginPath(); g.ellipse(0, 0, R * 0.2, R * 0.13 * open + 0.01, 0, 0, Math.PI, false); shape(open > 0.05 ? "#FFF6E0" : null);
+    if (open > 0.05) { g.beginPath(); g.arc(0, R * 0.04 * open, R * 0.06 * open, 0, TAU); shape("#5B4A1E"); }
+    g.beginPath(); g.ellipse(0, 0, R * 0.2, R * 0.07, 0, 0, Math.PI); shape(null, "#4F5A22", u * 0.45); // lid line
+    g.strokeStyle = "#4F5A22"; g.lineWidth = Math.max(1, u * 0.25);
+    for (let l = 0; l < 6; l++) { const a = 0.35 + l * 0.48; g.beginPath(); g.moveTo(Math.cos(a) * R * 0.2, Math.sin(a) * R * 0.07); g.lineTo(Math.cos(a) * R * 0.27, Math.sin(a) * R * 0.07 + R * 0.06); g.stroke(); }
+    g.beginPath(); g.ellipse(-s * 0, R * 0.22, R * 0.13, R * 0.08, 0, 0, TAU); shape(`rgba(226,80,60,${0.35 + S.mid * 0.3})`); // rosy cheek
+    g.restore();
+  }
+  g.beginPath(); g.moveTo(0, -R * 0.05); g.quadraticCurveTo(R * 0.06, R * 0.14, -R * 0.03, R * 0.2); shape(null, "#D2601A", u * 0.35);
+  const smile = 0.06 + sun.smile * 0.1 + S.pulse * 0.03;
+  g.beginPath(); g.moveTo(-R * 0.16, R * 0.36); g.quadraticCurveTo(0, R * (0.36 + smile), R * 0.16, R * 0.36);
+  g.quadraticCurveTo(0, R * (0.36 + smile * 0.3), -R * 0.16, R * 0.36); shape("#C8432A");
+  g.restore();
+  // rolling hills with a scatter of tiny flowers
+  [["#BFD77A", 74, 0.5], ["#9CC463", 80, 0.9], ["#7DB24E", 87, 1.4]].forEach(([col, base, ph], k) => {
+    g.beginPath(); g.moveTo(x0, y0 + h);
+    for (let i = 0; i <= 30; i++) { const x = -45 + i * 3; g.lineTo(X(x), Y(base + Math.sin(x * 0.07 + ph) * 3 + Math.sin(x * 0.15 + ph * 2) * 1.5)); }
+    g.lineTo(x0 + w, y0 + h); g.closePath(); shape(col);
+    for (let i = 0; i < 14; i++) {
+      const x = -42 + ((i * 37 + k * 13) % 84), y = base + 4 + ((i * 7) % 9), e = S.spec[(i + k * 5) % 16];
+      g.save(); g.translate(X(x), Y(y)); floret(u * (0.8 + k * 0.3) * (1 + e * 0.6), ["#FFFFFF", "#F7D84A", "#F29BB0"][(i + k) % 3], "#F08A1C", 1); g.restore();
+    }
+  });
+  // birds take off on the beat and drift across
+  sun.birds = sun.birds.filter(b => (b.x += dt * b.v) < 50);
+  sun.birds.forEach(b => { const f = Math.sin(t * 9 + b.p) * 0.8; g.beginPath(); g.moveTo(X(b.x - 1.6), Y(b.y - f)); g.quadraticCurveTo(X(b.x - 0.6), Y(b.y - 0.8), X(b.x), Y(b.y)); g.quadraticCurveTo(X(b.x + 0.6), Y(b.y - 0.8), X(b.x + 1.6), Y(b.y - f)); shape(null, "#5A4A3A", Math.max(1, u * 0.3)); });
+  g.restore();
+}
+
+// --- Room 3, piece ii: a ribbon-stroke tree; every harpsichord note paints a new branch ---
+const tree = { strokes: null, grown: 0, lastNote: 0, wobble: [], star: 0 };
+function makeTree() {
+  const r = seeded(31), out = [];
+  const COLS = ["#7FA9D1", "#F1D35B", "#E8483A", "#8CC46A", "#B79BD6", "#F2A23A", "#E77AA6", "#4F9E93", "#F4E07E", "#C58A5B"];
+  for (let i = 0; i < 64; i++) {
+    const p = i / 64, side = i % 2 ? 1 : -1;
+    const y = 0.9 - p * 0.78 + (r() - 0.5) * 0.03;
+    const reach = (0.42 - p * 0.3) * (0.8 + r() * 0.35);
+    const ang = side * (0.95 + r() * 0.45 - p * 0.35);
+    out.push({ y, side, reach, ang, wid: 0.03 + r() * 0.03, col: COLS[Math.floor(r() * COLS.length)], hatch: r() < 0.22 ? (r() < 0.5 ? 1 : 2) : 0, kink: 0.2 + r() * 0.4, orn: r() < 0.25 ? Math.floor(r() * 3) : -1, born: -1 });
+  }
+  return out;
+}
+function treeScene(t, dt, box) {
+  const h = box.h, w = Math.min(box.w, h * 0.62), x0 = box.x + (box.w - w) / 2, y0 = box.y, cx = x0 + w / 2;
+  if (!tree.strokes) tree.strokes = makeTree();
+  const now = ctx ? ctx.currentTime : 0;
+  // each new note grows the next branch; once the tree is full, notes make branches dance instead
+  while (NOTES.length && NOTES[0].t + 2 < now) NOTES.shift();
+  NOTES.forEach(n => {
+    if (n.t <= now && n.t > tree.lastNote) {
+      tree.lastNote = n.t;
+      if (tree.grown < tree.strokes.length) tree.strokes[tree.grown++].born = t;
+      else { const k = Math.floor(((Math.log2(n.f / 110) * 12) % tree.strokes.length + tree.strokes.length) % tree.strokes.length); tree.wobble[k] = 1; }
+    }
+  });
+  if (!nowPlaying && tree.grown < 20) for (; tree.grown < 20; tree.grown++) tree.strokes[tree.grown].born = -10; // a sapling before play
+  tree.star += dt * (0.4 + S.bass * 2);
+  g.save(); g.beginPath(); g.rect(x0, y0, w, h); g.clip();
+  g.fillStyle = "#F4E6D9"; g.fillRect(x0, y0, w, h);
+  // two soft pink washes behind, with uneven edges
+  g.fillStyle = "rgba(240,175,165,0.55)";
+  for (const [ax, aw] of [[0.06, 0.3], [0.6, 0.32]]) {
+    g.beginPath(); g.moveTo(x0 + w * ax, y0 + h * 0.06);
+    for (let i = 0; i <= 10; i++) g.lineTo(x0 + w * (ax + aw) + Math.sin(i * 1.7) * w * 0.015, y0 + h * (0.06 + i * 0.05));
+    for (let i = 10; i >= 0; i--) g.lineTo(x0 + w * ax + Math.sin(i * 2.3) * w * 0.015, y0 + h * (0.06 + i * 0.05) + (i === 10 ? Math.sin(i) * h * 0.03 : 0));
+    g.closePath(); g.fill();
+  }
+  const S0 = Math.min(w, h * 0.7);
+  // the trunk: two long ribbons
+  const baseY = y0 + h * 0.92;
+  const ribbon = (x1, y1, x2, y2, wid, kink, col, hatch, wob) => {
+    const dx = x2 - x1, dy = y2 - y1, L = Math.hypot(dx, dy), nx = -dy / L, ny = dx / L;
+    const mx = x1 + dx * 0.5 + nx * wid * kink * 2 + nx * wob, my = y1 + dy * 0.5 + ny * wid * kink * 2 + ny * wob;
+    const path = off => {
+      g.beginPath();
+      g.moveTo(x1 + nx * wid * 0.5 + off, y1 + ny * wid * 0.5 + off);
+      g.quadraticCurveTo(mx + nx * wid * 0.6 + off, my + ny * wid * 0.6 + off, x2 + nx * wid * 0.15 + off, y2 + ny * wid * 0.15 + off);
+      g.lineTo(x2 - nx * wid * 0.1 + dx / L * wid * 0.6 + off, y2 - ny * wid * 0.1 + dy / L * wid * 0.6 + off); // a torn, pointed tip
+      g.quadraticCurveTo(mx - nx * wid * 0.5 + off, my - ny * wid * 0.5 + off, x1 - nx * wid * 0.5 + off, y1 - ny * wid * 0.5 + off);
+      g.closePath();
+    };
+    path(0); g.fillStyle = col; g.fill();
+    if (hatch) { g.save(); path(0); g.clip(); g.strokeStyle = "rgba(60,40,40,0.35)"; g.lineWidth = 1; for (let k = -L; k < L * 2; k += 4) { g.beginPath(); g.moveTo(x1 + k, y1 - L); g.lineTo(x1 + k + L, y1 + L); if (hatch === 2) { g.moveTo(x1 + k, y1 + L); g.lineTo(x1 + k + L, y1 - L); } g.stroke(); } g.restore(); }
+    path(-1.5); g.strokeStyle = "#1E1A1A"; g.lineWidth = 1.4; g.stroke(); // the ink line, printed a little off register
+  };
+  ribbon(cx, baseY, cx + S0 * 0.01, y0 + h * 0.1, S0 * 0.03, 0.2, "#F1D35B", 0, 0);
+  ribbon(cx - S0 * 0.02, baseY, cx - S0 * 0.01, y0 + h * 0.3, S0 * 0.025, -0.3, "#8CC46A", 0, 0);
+  // feet of the tree
+  [[-1, 0.3, "#E77AA6"], [1, 0.32, "#F4E07E"], [-1, 0.22, "#B79BD6"], [1, 0.2, "#7FA9D1"]].forEach(([s, r, c], k) =>
+    ribbon(cx, baseY - S0 * 0.06, cx + s * S0 * r, baseY + S0 * (0.02 + k * 0.012), S0 * 0.03, 0.3 * s, c, k === 2 ? 1 : 0, 0));
+  // branches, each sweeping up from the trunk
+  tree.strokes.forEach((b, k) => {
+    if (b.born === -1) return;
+    const grow = Math.min(1, (t - b.born) / 0.35), ease = 1 - Math.pow(1 - grow, 3);
+    tree.wobble[k] = (tree.wobble[k] || 0) * Math.pow(0.05, dt);
+    const sway = Math.sin(t * 1.3 + k) * 2 + (tree.wobble[k] || 0) * 8 * Math.sin(t * 20);
+    const bx = cx, by = y0 + h * b.y, len = S0 * b.reach * ease;
+    const ex = bx + Math.sin(b.ang) * len, ey = by - Math.cos(Math.abs(b.ang)) * len;
+    ribbon(bx, by, ex, ey, S0 * b.wid * (0.4 + 0.6 * ease), b.kink * b.side, b.col, b.hatch, sway);
+    if (b.orn >= 0 && grow >= 1) { // baubles hanging from the tips, bobbing to the beat
+      const bob = Math.sin(t * 3 + k) * 2 + S.pulse * 3, ox = ex, oy = ey + 6 + bob, r = S0 * 0.022;
+      g.strokeStyle = "#1E1A1A"; g.lineWidth = 1; g.beginPath(); g.moveTo(ex, ey); g.lineTo(ox, oy - r); g.stroke();
+      if (b.orn === 0) { g.beginPath(); g.arc(ox, oy, r, 0, TAU); shape("#C8283A"); g.fillStyle = "#1E1A1A"; for (let d = 0; d < 6; d++) { g.beginPath(); g.arc(ox + Math.cos(d) * r * 1.1, oy + Math.sin(d) * r * 1.1, 1.2, 0, TAU); g.fill(); } }
+      else if (b.orn === 1) { g.beginPath(); g.arc(ox, oy, r, 0, TAU); shape("#E2A93B"); g.strokeStyle = "#5A3A1A"; g.lineWidth = 1; g.beginPath(); for (let d = 0; d < 3; d++) { g.moveTo(ox - r * 0.6 + d * r * 0.5, oy - r * 0.3); g.arc(ox - r * 0.45 + d * r * 0.5, oy, r * 0.18, -Math.PI / 2, Math.PI * 1.4); } g.stroke(); }
+      else { g.beginPath(); g.moveTo(ox, oy - r * 1.4); g.lineTo(ox + r * 0.8, oy); g.lineTo(ox, oy + r * 1.4); g.lineTo(ox - r * 0.8, oy); g.closePath(); shape("#B5203A"); g.beginPath(); g.arc(ox, oy, r * 0.35, 0, TAU); shape("#F4E6D9"); }
+    }
+  });
+  // the star on top
+  g.save(); g.translate(cx + S0 * 0.01, y0 + h * 0.07); g.rotate(tree.star);
+  g.strokeStyle = "#E2A93B"; g.lineWidth = 2.4; const sr = S0 * 0.045 * (1 + S.pulse * 0.25);
+  for (let k = 0; k < 8; k++) { g.beginPath(); g.moveTo(0, 0); g.lineTo(Math.cos(k * TAU / 8) * sr, Math.sin(k * TAU / 8) * sr); g.stroke(); }
+  g.fillStyle = "#1E1A1A"; for (let k = 0; k < 8; k++) { g.beginPath(); g.arc(Math.cos(k * TAU / 8 + 0.39) * sr * 1.05, Math.sin(k * TAU / 8 + 0.39) * sr * 1.05, 1.5, 0, TAU); g.fill(); }
+  g.restore();
+  // little sparkle ticks that flash with the high notes
+  g.strokeStyle = `rgba(150,170,220,${0.3 + S.high * 2})`; g.lineWidth = 1.2;
+  for (let k = 0; k < 10; k++) {
+    const a = k * 2.4, rx = cx + Math.cos(a) * S0 * (0.3 + (k % 3) * 0.06), ry = y0 + h * (0.25 + (k % 5) * 0.12);
+    for (let l = 0; l < 4; l++) { const aa = l * 0.5 - 0.75; g.beginPath(); g.moveTo(rx + Math.cos(aa) * 5, ry + Math.sin(aa) * 5); g.lineTo(rx + Math.cos(aa) * 10, ry + Math.sin(aa) * 10); g.stroke(); }
+  }
+  g.restore();
+}
+
+// --- Room 3, piece iii: a field of yellow flowers in the wind, and someone running through it, arms wide ---
+const field = { gust: -1, petals: [], wind: { x: 0, v: 0 }, hair: [] };
+function fieldScene(t, dt, box) {
+  const h = box.h, w = Math.min(box.w, h * 0.8), x0 = box.x + (box.w - w) / 2, y0 = box.y, u = h / 100, cx = x0 + w / 2;
+  const X = v => cx + v * u, Y = v => y0 + v * u;
+  spring(field.wind, dt, 3, 1.2);
+  if (field.gust >= 0) { field.gust += dt * 0.8; if (field.gust > 1.3) field.gust = -1; }
+  g.save(); g.beginPath(); g.rect(x0, y0, w, h); g.clip();
+  // hazy blue hills far away, then the field
+  g.fillStyle = "#AFC3E3"; g.fillRect(x0, y0, w, h);
+  g.beginPath(); g.moveTo(x0, Y(22)); for (let i = 0; i <= 20; i++) g.lineTo(x0 + i * w / 20, Y(14 + Math.sin(i * 0.6) * 3 + Math.sin(i * 1.4) * 1.5)); g.lineTo(x0 + w, Y(30)); g.lineTo(x0, Y(30)); g.closePath(); shape("#6E86B8");
+  g.fillStyle = "#79A947"; g.fillRect(x0, Y(24), w, h);
+  const windAt = (x, depth) => { // the wind: a steady breeze, plus a gust that sweeps across on the beat
+    const g1 = field.gust >= 0 ? Math.exp(-Math.pow(((x - x0) / w - field.gust) * 5, 2)) : 0;
+    return Math.sin(x * 0.02 - t * 2.2 + depth) * (0.35 + S.mid * 0.6) + g1 * 1.6 + field.wind.x * 0.4;
+  };
+  const drawRow = (yy, size, count, seed, depth) => {
+    for (let i = 0; i < count; i++) {
+      const fx = x0 + ((i + ((seed * 7 + i * 13) % 10) / 10) / count) * w, fy = Y(yy) + ((i * 37 + seed) % 7) * size * 0.25;
+      const lean = windAt(fx, depth) * size * 0.9;
+      g.strokeStyle = "#4E8A2E"; g.lineWidth = Math.max(1, size * 0.12);
+      g.beginPath(); g.moveTo(fx, fy + size * 2.5); g.quadraticCurveTo(fx + lean * 0.3, fy + size, fx + lean, fy); g.stroke();
+      const e = S.spec[(i + seed) % 16];
+      g.fillStyle = (i + seed) % 4 ? "#F6D21E" : "#F9E35A";
+      for (let p = 0; p < 5; p++) { const a = p * TAU / 5 + i; g.beginPath(); g.arc(fx + lean + Math.cos(a) * size * 0.45, fy + Math.sin(a) * size * 0.35, size * (0.42 + e * 0.15), 0, TAU); g.fill(); }
+    }
+  };
+  // back rows: small and many
+  for (let r = 0; r < 6; r++) drawRow(26 + r * 4, u * (0.9 + r * 0.35), 40 - r * 3, r * 11, r);
+  // the runner, mid-field: arms flung wide, head back, hair streaming, a striped jumper
+  const run = t * 3.2, bob = Math.abs(Math.sin(run)) * 1.2, px = Math.sin(t * 0.25) * 10, py = 50 - bob;
+  const open = 0.5 + Math.sin(t * 0.9) * 0.15 + S.mid * 0.3; // arms open wider when the music swells
+  const skin = "#E8B48A", stripes = ["#E9578B", "#F28A3B", "#5A7FD1", "#F5D04A", "#B860B0"];
+  // hair streaming back (to the right) with the wind
+  for (let k = 0; k < 9; k++) {
+    const sx = X(px + 2 + k * 0.2), sy = Y(py - 13 + k * 0.4);
+    g.beginPath(); g.moveTo(sx, sy);
+    for (let s = 1; s <= 6; s++) g.lineTo(sx + s * u * (1.6 + k * 0.1), sy + s * u * 0.9 + Math.sin(t * 6 - s + k) * u * (0.4 + S.high * 2));
+    g.strokeStyle = "#1A1412"; g.lineWidth = u * 0.9; g.lineCap = "round"; g.stroke();
+  }
+  // legs (mostly hidden in the flowers), jeans
+  for (const s of [-1, 1]) {
+    const step = Math.sin(run + (s > 0 ? Math.PI : 0)) * 3;
+    limb([X(px + s * 1.4), Y(py + 4)], [X(px + s * 1.4 + step * 0.6), Y(py + 9)], [X(px + s * 1.2 + step), Y(py + 14)], u * 3, u * 2.6, u * 2.2); shape("#7FA4D6");
+  }
+  // body: a striped jumper
+  const body = () => { g.beginPath(); g.moveTo(X(px - 4), Y(py - 8)); g.quadraticCurveTo(X(px), Y(py - 9.5), X(px + 4), Y(py - 8)); g.lineTo(X(px + 3.4), Y(py + 5)); g.lineTo(X(px - 3.4), Y(py + 5)); g.closePath(); };
+  body(); shape("#E9578B");
+  g.save(); body(); g.clip();
+  for (let k = 0; k < 9; k++) { g.fillStyle = stripes[k % 5]; g.fillRect(X(px - 5), Y(py - 7 + k * 1.5), 10 * u, 0.6 * u); }
+  g.restore();
+  // arms flung out, sleeves striped, hands open
+  for (const s of [-1, 1]) {
+    const sh = [px + s * 3.6, py - 7.5], up = open * 0.9 + Math.sin(t * 1.7 + s) * 0.08;
+    const a1 = s > 0 ? -up * 0.6 : Math.PI + up * 0.6, a2 = s > 0 ? -up * 0.9 : Math.PI + up * 0.9;
+    const el = [sh[0] + Math.cos(a1) * 6, sh[1] + Math.sin(a1) * 6], wr = [el[0] + Math.cos(a2) * 5.5, el[1] + Math.sin(a2) * 5.5];
+    limb([X(sh[0]), Y(sh[1])], [X(el[0]), Y(el[1])], [X(wr[0]), Y(wr[1])], u * 2.4, u * 2, u * 1.7); shape("#F28A3B");
+    g.save(); limb([X(sh[0]), Y(sh[1])], [X(el[0]), Y(el[1])], [X(wr[0]), Y(wr[1])], u * 2.4, u * 2, u * 1.7); g.clip();
+    for (let k = 0; k < 12; k++) { const p = k / 12, x = sh[0] + (wr[0] - sh[0]) * p, y = sh[1] + (wr[1] - sh[1]) * p; g.save(); g.translate(X(x), Y(y)); g.rotate(a1 + Math.PI / 2); g.fillStyle = stripes[k % 5]; g.fillRect(-2 * u, -0.25 * u, 4 * u, 0.5 * u); g.restore(); }
+    g.restore();
+    hand(X(wr[0]), Y(wr[1]), a2, u * 0.8, 0.2, skin);
+  }
+  // head tipped back in the sun
+  g.beginPath(); g.ellipse(X(px - 0.2), Y(py - 12.5), 2.5 * u, 2.9 * u, -0.5, 0, TAU); shape(skin);
+  g.beginPath(); g.arc(X(px + 0.8), Y(py - 13), 2.6 * u, -1.3, 1.6); shape("#1A1412");
+  g.beginPath(); g.arc(X(px - 1.2), Y(py - 13.2), 0.9 * u, Math.PI * 0.1, Math.PI * 0.9); shape(null, "#9A4A3A", u * 0.3); // a smile
+  g.lineCap = "butt";
+  // front rows: big flowers that sweep in front of the runner
+  for (let r = 0; r < 4; r++) drawRow(60 + r * 9, u * (2.8 + r * 1.3), 16 - r * 2, 50 + r * 7, 6 + r);
+  // petals blown off on the beat
+  field.petals = field.petals.filter(p => (p.life -= dt) > 0);
+  field.petals.forEach(p => { p.x += (p.vx + windAt(p.x, 0) * 40) * dt; p.y += p.vy * dt; p.vy += 20 * dt; p.a += dt * 4; g.beginPath(); g.ellipse(p.x, p.y, 4, 2.2, p.a, 0, TAU); shape("#F9DD3A"); });
+  g.restore();
+}
+function fieldBeat() {
+  field.gust = 0; field.wind.v += 1 + S.bass;
+  if (W) for (let k = 0; k < 6; k++) field.petals.push({ x: W * (0.2 + Math.random() * 0.4), y: H * (0.4 + Math.random() * 0.3), vx: 40 + Math.random() * 60, vy: -60 - Math.random() * 60, a: Math.random() * TAU, life: 2.5 });
+}
+
 const ARTS = {
   // segments: how many mirrored slices; drift: how far the slice wanders across the pattern
   medallion: { draw: medallion, segments: 8, drift: 0.09, zoom: 0.36 },
@@ -1246,7 +1634,10 @@ const ARTS = {
   loom: { scene: loomScene },
   moon: { scene: moonScene },
   manton: { scene: mantonScene },
-  feria: { scene: feriaScene }
+  feria: { scene: feriaScene },
+  sun: { scene: sunScene },
+  tree: { scene: treeScene },
+  field: { scene: fieldScene }
 };
 const K = { spin: 0, punch: 0 };
 function onBeat() {
@@ -1258,6 +1649,8 @@ function onBeat() {
   }
   if (art === "loom") loom.spark = 2;
   if (art === "moon") dancerBeat();
+  if (art === "sun" && Math.random() < 0.4) sun.birds.push({ x: -50, y: 20 + Math.random() * 30, v: 8 + Math.random() * 6, p: Math.random() * 6 });
+  if (art === "field") fieldBeat();
   if (art === "manton") { manton.fr.v += manton.side * (1.4 + S.bass); manton.ang.v += manton.side * 0.6; manton.side *= -1; }
   if (art === "feria") { feria.wave = 0; feria.splash = 1; feria.palm.v += (Math.random() < 0.5 ? -1 : 1) * (0.6 + S.bass); }
 }
@@ -1358,13 +1751,15 @@ function chooseRoom(i) {
   roomIndex = i; pieceIndex = 0;
   try { history.replaceState(null, "", "#s" + (i + 1)); } catch (e) {}
   renderControls();
-  if (nowPlaying) play();
+  if (wantSound) play();
 }
 function choosePiece(i) {
   pieceIndex = i; renderControls();
-  if (nowPlaying) play();
+  if (wantSound) play();
 }
+let wantSound = false; // true from pressing play until pressing pause, even while a track is still loading
 async function play() {
+  wantSound = true;
   setupAudio(); await ctx.resume();
   await startPiece(ROOMS[roomIndex].pieces[pieceIndex]);
   document.body.classList.add("playing");
@@ -1372,12 +1767,13 @@ async function play() {
   live.textContent = "Playing piece " + (pieceIndex + 1);
 }
 function pause() {
+  wantSound = false;
   stopPiece();
   document.body.classList.remove("playing");
   playBtn.setAttribute("aria-label", "Play");
   live.textContent = "Paused";
 }
-playBtn.addEventListener("click", () => (nowPlaying ? pause() : play()));
+playBtn.addEventListener("click", () => (wantSound ? pause() : play()));
 window.addEventListener("keydown", e => { if (e.key === " " && e.target === document.body) { e.preventDefault(); playBtn.click(); } });
 
 const start = parseInt((location.hash.match(/^#s(\d)$/) || [])[1], 10) - 1;
