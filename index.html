@@ -3449,7 +3449,7 @@ const ARTS = {
   lilies: { scene: liliesScene, paint: "monet" },
   guitarist: { scene: guitaristScene, paint: "blue" },
   scream: { scene: screamScene, paint: "munch" },
-  chapel: { scene: chapelScene },
+  chapel: { scene: chapelScene, real: "glass" },
   kimono: { scene: kimonoScene },
   koi: { scene: koiScene },
   eisho: { scene: eishoScene },
@@ -3509,7 +3509,7 @@ function render(t, dt) {
     const box = { x: 24, y: top, w: W - 48, h: avail };
     art.scene(t, dt, box);
     if (art.paint) paintApply(art.paint, box, t, dt); // repaint it as a painting: strokes, paint, ground
-    if (art.real === "archi") archiApply(box, t, dt); // render the drawing's materials as real ones
+    if (art.real) realApply(art.real, box, t, dt); // render the drawing's materials as the real ones
     return;
   }
   K.spin += dt * (0.04 + S.mid * 0.6);

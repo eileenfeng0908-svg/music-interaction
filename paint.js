@@ -393,3 +393,70 @@ function archiApply(box, t, dt) {
   g.drawImage(PAINT.cv, box.x, box.y, box.w, box.h);
   g.restore();
 }
+
+// ================================================================
+// STAINED GLASS AND STONE — for the gothic window (4iii). Lit from behind, real glass is uneven:
+// thicker and darker in places, with ripples from the cylinder it was blown in and tiny seed bubbles;
+// its colour spills a little light into the air around it and onto the stone sill below.
+// The stone gets pitted, chiselled grain; brass glints in the candlelight.
+// ================================================================
+const GLASS_FS = PAINT_COMMON + `
+uniform sampler2D uSrc; uniform vec4 uBox; uniform vec2 uRes; uniform float uT, uScale, uGlow;
+in vec2 vUv; out vec4 o;
+vec4 S(vec2 px){ return texture(uSrc, uBox.xy + clamp(px, vec2(.5), uRes - .5) / uRes * uBox.zw); }
+float chroma(vec3 c){ return max(c.r, max(c.g, c.b)) - min(c.r, min(c.g, c.b)); }
+bool brass(vec3 c){ return c.r > .55 && c.r > c.g && c.g > c.b && c.r - c.b > .25 && dot(c, vec3(.3, .59, .11)) > .64; }
+bool glassy(vec3 c){ float l = dot(c, vec3(.3, .59, .11)); return !brass(c) && ((chroma(c) > .2 && l > .1) || (c.g > c.r + .02 && l > .45 && chroma(c) < .2)); }
+void main(){
+  vec2 px = gl_FragCoord.xy, q = px / uScale;
+  vec4 c0 = S(px); if (c0.a < .01) { o = vec4(0); return; }
+  vec3 c = c0.rgb, col = c; float l = dot(c, vec3(.3, .59, .11));
+  if (glassy(c)) {
+    col *= .82 + .3 * fb(q * .22);                                  // uneven thickness
+    col *= .94 + .1 * vn(vec2(q.x * .12, q.y * .9));                // ripples of blown glass
+    col += vec3(1.) * step(.996, h12(floor(q * 1.6))) * .25;        // seed bubbles
+    col *= 1.18 + uGlow * .25;                                      // light coming through it
+  } else if (brass(c)) {
+    col *= .9 + .2 * vn(q * 1.5);
+    col += vec3(1., .85, .55) * pow(vn(q * .4 + uT * .6), 6.) * .5;   // a flickering glint from the candle
+  } else if (l < .45 && chroma(c) < .15) {
+    // stone: chisel marks and pitting
+    col *= .88 + .18 * fb(q * .6) ; col *= 1. - step(.985, h12(floor(q * 2.2))) * .3;
+    // coloured light falling from the window onto the stone below it
+    vec3 spill = vec3(0); float wsum = 0.;
+    for (int i = 1; i <= 6; i++) { vec3 s = S(px + vec2(0., float(i) * 7. * uScale)).rgb; if (glassy(s)) { spill += s; wsum += 1.; } }
+    if (wsum > 0.) col += spill / wsum * .18 * (wsum / 6.) * (.8 + uGlow * .6);
+  }
+  // halation: glass glows softly into the dark around it
+  vec3 halo = vec3(0);
+  for (int i = 0; i < 8; i++) { float a = float(i) * .785; vec3 s = S(px + vec2(cos(a), sin(a)) * 5. * uScale).rgb; if (glassy(s)) halo += s; }
+  col += halo / 8. * .2 * (1. + uGlow);
+  col += (h12(px + fract(uT) * 41.) - .5) * .02;
+  o = vec4(clamp(col, 0., 1.) * c0.a, c0.a);
+}`;
+function realApply(kind, box, t, dt) {
+  if (kind === "archi") return archiApply(box, t, dt);
+  if (PAINT.gl === null) paintSetup();
+  if (!PAINT.gl) return;
+  const { gl } = PAINT;
+  if (!PAINT.glass) {
+    const sh = (type, src) => { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s);
+      if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) console.warn("glass shader", gl.getShaderInfoLog(s)); return s; };
+    const p = gl.createProgram(); gl.attachShader(p, sh(gl.VERTEX_SHADER, PAINT_VS)); gl.attachShader(p, sh(gl.FRAGMENT_SHADER, GLASS_FS));
+    gl.bindAttribLocation(p, 0, "p"); gl.linkProgram(p); p.u = {}; PAINT.glass = p;
+  }
+  const cnv = screen.canvas, k = Math.min(DPR, 1.5), w = Math.max(16, Math.round(box.w * k)), h = Math.max(16, Math.round(box.h * k));
+  paintResize(w, h);
+  gl.bindTexture(gl.TEXTURE_2D, PAINT.src);
+  gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true); gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, cnv);
+  const CW = cnv.width / DPR, CH = cnv.height / DPR;
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.viewport(0, 0, w, h); gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT);
+  paintUse(PAINT.glass, { uBox: [box.x / CW, 1 - (box.y + box.h) / CH, box.w / CW, box.h / CH], uRes: [w, h], uT: t, uScale: k, uGlow: Math.min(1, S.mid + S.pulse * 0.5) });
+  paintBind(PAINT.glass, "uSrc", 0, PAINT.src);
+  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+  g.save(); g.setTransform(DPR, 0, 0, DPR, 0, 0);
+  g.clearRect(box.x, box.y, box.w, box.h);
+  g.drawImage(PAINT.cv, box.x, box.y, box.w, box.h);
+  g.restore();
+}
