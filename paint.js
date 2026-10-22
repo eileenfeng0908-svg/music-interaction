@@ -5,7 +5,8 @@
 // has bristle marks and a thickness that catches the light, and sits on the ground the painter used:
 // canvas, cardboard, gessoed panel, wet plaster or silk. Strokes stay put; their colour lives with the
 // scene, and now and then a stroke is laid again (the "boil" of painted animation), faster when the music
-// swells. Rooms 1, 6 and "?" and the 5iii print are never passed through here.
+// swells. Used only for pieces that are themselves oil paintings (Monet, Picasso, Munch, the Baroque
+// heaven); architecture, textiles, prints, the tarot card and the photographic scenes keep their own rendering.
 // ================================================================
 const PAINT = { gl: null };
 
@@ -18,11 +19,11 @@ const PAINT_STYLES = {
   monet:   { size: [24, 14, 7],  len: 1.6, wid: 0.62, jit: 0.24, hue: 0.12, keep: 0.08, imp: 1.0, bristle: 0.45, curve: 0.15, detail: 1.4, ground: 0, gap: 0.18, gloss: 0.22, cracks: 0,   varnish: 0.04, dir: 0.0, spread: 0.35 },
   // Picasso, The Old Guitarist (Blue Period): thin oil laid in long fluid strokes that follow the body, scumbled,
   // the canvas weave and earlier painting showing through
-  blue:    { size: [28, 15, 7],  len: 3.6, wid: 0.45, jit: 0.06, hue: 0.02, keep: 0.30, imp: 0.35, bristle: 0.65, curve: 0.35, detail: 1.1, ground: 0, gap: 0.10, gloss: 0.10, cracks: 0,   varnish: 0.03, dir: 1.5708, spread: 0.6 },
+  blue:    { size: [22, 12, 6],  len: 3.4, wid: 0.45, jit: 0.04, hue: 0.01, keep: 0.62, imp: 0.12, bristle: 0.45, curve: 0.35, detail: 1.1, ground: 0, gap: 0.04, gloss: 0.10, cracks: 0,   varnish: 0.03, dir: 1.5708, spread: 0.6 },
   // Munch, The Scream: long swirling strokes of oil, tempera and pastel on cardboard, dry and broken, board showing
   munch:   { size: [20, 11, 6],  len: 4.2, wid: 0.40, jit: 0.10, hue: 0.04, keep: 0.12, imp: 0.45, bristle: 0.85, curve: 0.55, detail: 1.0, ground: 1, gap: 0.28, gloss: 0.04, cracks: 0,   varnish: 0.0,  dir: 0.35, spread: 0.9 },
   // Baroque oil: smooth glazes blended almost invisibly, impasto only in the lights, fine cracks, amber varnish
-  baroque: { size: [24, 13, 7],  len: 2.6, wid: 0.70, jit: 0.04, hue: 0.01, keep: 0.55, imp: 0.40, bristle: 0.25, curve: 0.30, detail: 0.9, ground: 2, gap: 0.0,  gloss: 0.30, cracks: 0.8, varnish: 0.22, dir: 0.8, spread: 1.2 },
+  baroque: { size: [20, 11, 6],  len: 2.6, wid: 0.70, jit: 0.03, hue: 0.01, keep: 0.70, imp: 0.18, bristle: 0.15, curve: 0.30, detail: 0.9, ground: 2, gap: 0.0,  gloss: 0.20, cracks: 0.25, varnish: 0.14, dir: 0.8, spread: 1.2 },
   // late-medieval tempera on a gessoed panel: fine parallel hatching, gold leaf that glints, an old crackle
   tempera: { size: [10, 6, 3.5], len: 2.8, wid: 0.32, jit: 0.06, hue: 0.02, keep: 0.45, imp: 0.15, bristle: 0.30, curve: 0.05, detail: 1.2, ground: 2, gap: 0.05, gloss: 0.05, cracks: 1.0, varnish: 0.12, dir: 0.6, spread: 0.15 },
   // fresco: pigment sunk into wet lime plaster, matte and chalky, soft strokes, hairline cracks
