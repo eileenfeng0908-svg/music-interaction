@@ -1106,7 +1106,43 @@ function moonScene(t, dt, box) {
   g.beginPath(); g.arc(0, 2.5 * u, 1.45 * u, 0, TAU); shape("#F2EEE4", "#BDB6A6", 1);
   g.beginPath(); g.arc(-0.45 * u, 2.05 * u, 0.4 * u, 0, TAU); shape("#FFFFFF");
   g.restore();
+  // the fresco surface over everything
+  const fk = Math.round(w) + "x" + Math.round(h) + "@" + DPR;
+  if (dancer.frescoKey !== fk) { dancer.frescoKey = fk; dancer.fresco = frescoLayers(w, h); }
+  g.globalCompositeOperation = "multiply"; blit(dancer.fresco.mul, x0, y0);
+  g.globalCompositeOperation = "source-over"; blit(dancer.fresco.top, x0, y0);
   g.restore();
+}
+
+// A fresco surface laid over the whole picture: lime plaster that mottles the pigment, fine cracks,
+// and little flecks where the paint has worn away. Painted once per size, crisp at any resolution.
+function frescoLayers(w, h) {
+  const mul = offscreen(w, h, (fw, fh) => {
+    const r = seeded(71);
+    g.fillStyle = "rgb(246,240,228)"; g.fillRect(0, 0, fw, fh);
+    for (let i = 0; i < fw * fh / 18; i++) { // mottled lime: patches a little darker or warmer
+      const x = r() * fw, y = r() * fh, n = fbm(x * 0.012, y * 0.012);
+      brush(x, y, 3 + r() * 6, 2 + r() * 3, r() * TAU, paint(mixc([255, 252, 244], [196, 172, 140], Math.max(0, n - 0.25) * 1.6), 14, r));
+    }
+    for (let i = 0; i < fw * fh / 60; i++) { g.fillStyle = r() < 0.5 ? "rgba(150,130,110,0.35)" : "rgba(120,100,90,0.25)"; g.fillRect(r() * fw, r() * fh, 1, 1); } // grit
+    g.lineCap = "round";
+    for (let c = 0; c < 9; c++) { // hairline cracks wandering through the plaster
+      let x = r() * fw, y = r() * fh, a = r() * TAU;
+      g.strokeStyle = "rgba(150,124,100,0.6)"; g.lineWidth = 0.5; g.beginPath(); g.moveTo(x, y);
+      for (let s = 0; s < 40; s++) { a += (r() - 0.5) * 0.9; x += Math.cos(a) * 4; y += Math.sin(a) * 4; g.lineTo(x, y); if (r() < 0.06) { g.moveTo(x, y); a += (r() - 0.5) * 2; } }
+      g.stroke();
+    }
+  });
+  const top = offscreen(w, h, (fw, fh) => {
+    const r = seeded(72);
+    g.fillStyle = "rgba(244,236,220,0.2)"; g.fillRect(0, 0, fw, fh); // a chalky veil, like dry lime
+    for (let i = 0; i < 600; i++) { // worn flecks showing the plaster underneath
+      const x = r() * fw, y = r() * fh;
+      if (fbm(x * 0.02, y * 0.02) < 0.55) continue;
+      g.fillStyle = `rgba(240,230,210,${0.4 + r() * 0.4})`; g.beginPath(); g.ellipse(x, y, 1 + r() * 3, 0.6 + r() * 1.5, r() * TAU, 0, TAU); g.fill();
+    }
+  });
+  return { mul, top };
 }
 
 // --- Room 2, piece ii: an embroidered silk shawl (mantón) whose long fringe dances to the compás ---
@@ -1124,6 +1160,20 @@ function rose(r, open, petal, deep) {
   }
   g.beginPath(); g.arc(0, 0, r * 0.22, 0, TAU); shape(deep);
   g.beginPath(); g.arc(r * 0.05, -r * 0.04, r * 0.1, 0, TAU); shape(petal);
+}
+// Silk crêpe for the shawl: fine threads running along the square's edges, with slubs here and there.
+function paintSilk(d) {
+  return offscreen(2 * d, 2 * d, () => {
+    const r = seeded(88);
+    g.translate(d, d); g.rotate(Math.PI / 4);
+    for (let i = -1.5 * d; i < 1.5 * d; i += 1.6) {
+      for (let k = 0; k < 2; k++) {
+        g.strokeStyle = k ? `rgba(255,214,200,${0.06 + r() * 0.08})` : `rgba(60,0,10,${0.08 + r() * 0.1})`; g.lineWidth = 0.6;
+        g.beginPath(); if (k) { g.moveTo(i, -1.5 * d); g.lineTo(i, 1.5 * d); } else { g.moveTo(-1.5 * d, i); g.lineTo(1.5 * d, i); } g.stroke();
+      }
+    }
+    for (let i = 0; i < d * 3; i++) { const x = (r() - 0.5) * 2.8 * d, y = (r() - 0.5) * 2.8 * d; brush(x, y, 2 + r() * 5, 0.5, 0, r() < 0.5 ? "rgba(240,150,140,0.35)" : "rgba(90,8,16,0.35)"); }
+  });
 }
 function mantonScene(t, dt, box) {
   const h = box.h, d = Math.min(h * 0.4, box.w * 0.42), cx = box.x + box.w / 2, top = box.y + h * 0.02;
@@ -1148,6 +1198,17 @@ function mantonScene(t, dt, box) {
   g.save(); g.translate(T[0], T[1]); g.rotate(ang);
   const diamond = inset => { g.beginPath(); g.moveTo(0, inset * 1.414); g.lineTo(-d + inset * 1.414, d); g.lineTo(0, 2 * d - inset * 1.414); g.lineTo(d - inset * 1.414, d); g.closePath(); };
   diamond(0); shape("#B5272A");
+  // the silk: woven threads, and soft folds hanging from the top corner that sway as the shawl swings
+  if (!manton.silk || manton.silkD !== Math.round(d) + "@" + DPR) { manton.silkD = Math.round(d) + "@" + DPR; manton.silk = paintSilk(d); }
+  g.save(); diamond(0); g.clip();
+  for (let k = 0; k < 7; k++) {
+    const fx = (-0.95 + k * 0.32 + manton.ang.x * 0.06 + Math.sin(t * 0.7 + k * 1.3) * 0.03) * d, fw = d * (0.08 + (k % 3) * 0.03);
+    const fg = g.createLinearGradient(fx - fw, 0, fx + fw, 0);
+    fg.addColorStop(0, "rgba(80,0,12,0)"); fg.addColorStop(0.45, k % 2 ? "rgba(80,0,12,0.22)" : "rgba(255,190,170,0.16)"); fg.addColorStop(1, "rgba(80,0,12,0)");
+    g.fillStyle = fg; g.beginPath(); g.moveTo(0, 0); g.lineTo(fx - fw * 2.2, 2 * d); g.lineTo(fx + fw * 2.2, 2 * d); g.closePath(); g.fill();
+  }
+  g.drawImage(manton.silk, -d, 0, 2 * d, 2 * d);
+  g.restore();
   diamond(d * 0.1); shape(null, "#F1DFC0", 1.2);
   diamond(d * 0.13); shape(null, "#F1DFC0", 0.8);
   // a border of small cream flowers between the two lines
@@ -1186,6 +1247,7 @@ function mantonScene(t, dt, box) {
     g.restore();
   });
   g.restore();
+  g.save(); diamond(0); g.clip(); g.globalAlpha = 0.5; g.drawImage(manton.silk, -d, 0, 2 * d, 2 * d); g.globalAlpha = 1; g.restore(); // the stitches sit in the weave too
   g.restore();
 }
 
@@ -1380,78 +1442,169 @@ function feriaScene(t, dt, box) {
 // ================================================================
 // Room 3 scenes — everything bright, happy, a little hand-made
 // ================================================================
-// --- Room 3, piece i: a smiling sun that climbs as the scale climbs ---
-const sun = { y: 0.6, spin: 0, smile: 0, dabs: null, birds: [] };
+// --- Room 3, piece i: an old painted card of the Sun; the sun climbs as the scale climbs and opens its eyes at the top ---
+const sun = { y: 0.3, spin: 0, smile: 0, key: "", sky: null, wall: null, frame: null, face: null, flower: null, yods: [] };
+// The sun's face, painted once like egg tempera on gold: modelled cheeks, a long nose, full lips, engraved rim.
+function paintSunFace(R) {
+  return offscreen(R * 2, R * 2, () => {
+    const r = seeded(19);
+    g.translate(R, R);
+    g.beginPath(); g.arc(0, 0, R, 0, TAU);
+    const gr = g.createRadialGradient(-R * 0.3, -R * 0.35, R * 0.05, 0, 0, R);
+    gr.addColorStop(0, "rgb(255,240,170)"); gr.addColorStop(0.55, "rgb(240,188,62)"); gr.addColorStop(1, "rgb(196,122,28)");
+    g.fillStyle = gr; g.fill();
+    g.save(); g.beginPath(); g.arc(0, 0, R, 0, TAU); g.clip();
+    for (let i = 0; i < 900; i++) { // tempera strokes following the round of the face
+      const a = r() * TAU, d = Math.sqrt(r()) * R, x = Math.cos(a) * d, y = Math.sin(a) * d, k = d / R;
+      g.globalAlpha = 0.35; brush(x, y, R * 0.03 + r() * R * 0.03, R * 0.008, a + Math.PI / 2, paint(mixc([255, 226, 130], [190, 118, 30], k * 0.8 + (x + y) / R * 0.15), 26, r));
+    }
+    g.globalAlpha = 1;
+    const shade = (cx, cy, rx, ry, col) => { const sg = g.createRadialGradient(cx, cy, 0, cx, cy, rx); sg.addColorStop(0, col); sg.addColorStop(1, col.replace(/[\d.]+\)$/, "0)")); g.fillStyle = sg; g.beginPath(); g.ellipse(cx, cy, rx, ry, 0, 0, TAU); g.fill(); };
+    shade(-R * 0.42, R * 0.18, R * 0.24, R * 0.18, "rgba(226,104,60,0.45)"); shade(R * 0.42, R * 0.18, R * 0.24, R * 0.18, "rgba(226,104,60,0.45)"); // rosy cheeks
+    shade(R * 0.14, -R * 0.02, R * 0.1, R * 0.28, "rgba(150,80,20,0.35)"); // shadow beside the nose
+    shade(-R * 0.3, -R * 0.12, R * 0.22, R * 0.11, "rgba(150,84,22,0.3)"); shade(R * 0.3, -R * 0.12, R * 0.22, R * 0.11, "rgba(150,84,22,0.3)"); // eye sockets
+    g.restore();
+    const ink = "rgb(110,56,20)"; g.strokeStyle = ink; g.lineCap = "round";
+    // brows
+    for (const s of [-1, 1]) { g.lineWidth = R * 0.035; g.beginPath(); g.moveTo(s * R * 0.08, -R * 0.27); g.quadraticCurveTo(s * R * 0.3, -R * 0.4, s * R * 0.52, -R * 0.25); g.stroke(); }
+    // long straight nose with a curl at each nostril
+    g.lineWidth = R * 0.025; g.beginPath(); g.moveTo(R * 0.06, -R * 0.24); g.quadraticCurveTo(R * 0.1, -R * 0.02, R * 0.08, R * 0.16); g.quadraticCurveTo(R * 0.02, R * 0.21, -R * 0.06, R * 0.17); g.stroke();
+    g.beginPath(); g.arc(-R * 0.1, R * 0.15, R * 0.04, 0.5, 3.6); g.stroke();
+    // lips
+    g.beginPath(); g.moveTo(-R * 0.2, R * 0.36); g.quadraticCurveTo(-R * 0.08, R * 0.3, 0, R * 0.34); g.quadraticCurveTo(R * 0.08, R * 0.3, R * 0.2, R * 0.36); g.quadraticCurveTo(R * 0.1, R * 0.47, 0, R * 0.47); g.quadraticCurveTo(-R * 0.1, R * 0.47, -R * 0.2, R * 0.36);
+    const lg = g.createLinearGradient(0, R * 0.3, 0, R * 0.47); lg.addColorStop(0, "rgb(170,62,40)"); lg.addColorStop(1, "rgb(214,104,66)"); g.fillStyle = lg; g.fill();
+    g.lineWidth = R * 0.015; g.beginPath(); g.moveTo(-R * 0.2, R * 0.36); g.quadraticCurveTo(0, R * 0.4, R * 0.2, R * 0.36); g.stroke();
+    g.beginPath(); g.arc(0, R * 0.45, R * 0.28, 1.15, 2.0); g.stroke(); // chin
+    // engraved rim: fine hatching around the edge, as on gold leaf
+    g.lineWidth = Math.max(0.6, R * 0.008);
+    for (let i = 0; i < 160; i++) { const a = i / 160 * TAU; g.strokeStyle = i % 2 ? "rgba(120,64,14,0.55)" : "rgba(255,236,170,0.6)"; g.beginPath(); g.moveTo(Math.cos(a) * R * 0.88, Math.sin(a) * R * 0.88); g.lineTo(Math.cos(a) * R * 0.99, Math.sin(a) * R * 0.99); g.stroke(); }
+    g.beginPath(); g.arc(0, 0, R * 0.995, 0, TAU); g.strokeStyle = "rgb(120,62,16)"; g.lineWidth = R * 0.02; g.stroke();
+  });
+}
+// A sunflower head, painted once: two rings of petals around a dark seed disc.
+function paintSunflower(s) {
+  return offscreen(s, s, () => {
+    const r = seeded(23); g.translate(s / 2, s / 2);
+    for (const [n, len, off, col] of [[16, 0.48, 0, [214, 150, 26]], [16, 0.42, 0.2, [248, 196, 40]]]) {
+      for (let i = 0; i < n; i++) {
+        const a = i / n * TAU + off; g.save(); g.rotate(a);
+        g.beginPath(); g.moveTo(s * 0.14, 0); g.quadraticCurveTo(s * 0.3, -s * 0.06, s * len, 0); g.quadraticCurveTo(s * 0.3, s * 0.06, s * 0.14, 0);
+        const pg = g.createLinearGradient(s * 0.14, 0, s * len, 0); pg.addColorStop(0, `rgb(${mixc(col, [120, 70, 10], 0.4)})`); pg.addColorStop(1, `rgb(${col})`); g.fillStyle = pg; g.fill();
+        g.restore();
+      }
+    }
+    g.beginPath(); g.arc(0, 0, s * 0.17, 0, TAU); roundShade(0, 0, s * 0.17, [130, 84, 40], [84, 50, 24], [44, 26, 14]);
+    for (let i = 0; i < 70; i++) { const a = i * 2.4, d = Math.sqrt(i / 70) * s * 0.15; g.beginPath(); g.arc(Math.cos(a) * d, Math.sin(a) * d, s * 0.008, 0, TAU); g.fillStyle = r() < 0.5 ? "rgb(150,100,40)" : "rgb(30,18,10)"; g.fill(); }
+  });
+}
 function sunScene(t, dt, box) {
-  const h = box.h, w = Math.min(box.w, h * 0.85), x0 = box.x + (box.w - w) / 2, y0 = box.y, u = h / 100, cx = x0 + w / 2;
-  const X = v => cx + v * u, Y = v => y0 + v * u;
-  if (!sun.dabs) sun.dabs = {
-    face: brushMarks(11, 160, r => { const a = r() * TAU, d = Math.sqrt(r()) * 0.92; return [Math.cos(a) * d, Math.sin(a) * d, 0.05 + r() * 0.08, 0.015 + r() * 0.02, a + 1.4, pick3(r, ["#F7B731", "#F49B22", "#FBC94A", "#F08A1C"])]; }),
-    sky: brushMarks(12, 120, r => [-45 + r() * 90, r() * 70, 1.5 + r() * 3, 0.3 + r() * 0.5, (r() - 0.5) * 0.5, pick3(r, ["#F6D9CC", "#F3CDBF", "#F8E3D6"])])
-  };
-  // the sun's height follows the pitch: low notes near the hills, high notes near the top
+  const h = box.h, w = Math.min(box.w, h * 0.6), x0 = box.x + (box.w - w) / 2, y0 = box.y;
+  const b = w * 0.07, px = b, py = b * 1.9, pw = w - b * 2, ph = h - b * 3.2, wallY = py + ph * 0.8; // the picture inside the card's border
+  const key = Math.round(w) + "x" + Math.round(h) + "@" + DPR;
+  if (sun.key !== key) {
+    sun.key = key;
+    sun.sky = offscreen(pw, ph, (fw, fh) => { // deep lapis at the top fading to a pale morning blue, with small gold stars
+      const r = seeded(31), gr = g.createLinearGradient(0, 0, 0, fh);
+      gr.addColorStop(0, "rgb(30,52,120)"); gr.addColorStop(0.55, "rgb(84,124,186)"); gr.addColorStop(0.85, "rgb(196,212,220)"); g.fillStyle = gr; g.fillRect(0, 0, fw, fh);
+      for (let i = 0; i < fw * fh / 30; i++) { const x = r() * fw, y = r() * fh, k = y / fh; brush(x, y, 2 + r() * 4, 1 + r(), (r() - 0.5) * 0.5, paint(k < 0.55 ? mixc([30, 52, 120], [84, 124, 186], k / 0.55) : mixc([84, 124, 186], [210, 220, 222], (k - 0.55) / 0.45), 18, r)); }
+      for (let i = 0; i < 40; i++) { const x = r() * fw, y = r() * fh * 0.45, s = 1.5 + r() * 2; g.fillStyle = "rgb(232,192,92)"; for (let p = 0; p < 4; p++) { g.beginPath(); g.ellipse(x + Math.cos(p * Math.PI / 2) * s, y + Math.sin(p * Math.PI / 2) * s, s, s * 0.5, p * Math.PI / 2, 0, TAU); g.fill(); } }
+    });
+    sun.wall = offscreen(pw, ph, (fw, fh) => { // a grey stone garden wall, and green grass at its foot
+      const r = seeded(44), top = fh * 0.8, rows = 5, rh = (fh * 0.17) / rows;
+      g.fillStyle = "rgb(150,146,136)"; g.fillRect(0, top, fw, fh * 0.17);
+      for (let row = 0; row < rows; row++) for (let x = -(row % 2) * rh; x < fw; x += rh * 2.1) {
+        const sx = x + 1, sy = top + row * rh + 1, sw = rh * 2.1 - 2, sh = rh - 2;
+        const sg = g.createLinearGradient(sx, sy, sx, sy + sh); const tone = 0.85 + r() * 0.3; sg.addColorStop(0, `rgb(${mixc([206, 200, 186], [0, 0, 0], 1 - tone)})`); sg.addColorStop(1, `rgb(${mixc([150, 144, 134], [0, 0, 0], 1 - tone)})`); g.fillStyle = sg; g.fillRect(sx, sy, sw, sh);
+        for (let k = 0; k < 6; k++) brush(sx + r() * sw, sy + r() * sh, rh * 0.25, rh * 0.06, (r() - 0.5) * 0.4, `rgba(${r() < 0.5 ? '230,226,214' : '110,106,98'},0.5)`);
+      }
+      g.fillStyle = "rgb(120,116,108)"; g.fillRect(0, top - rh * 0.5, fw, rh * 0.5); g.fillStyle = "rgb(214,208,194)"; g.fillRect(0, top - rh * 0.5, fw, rh * 0.18); // coping stones
+      g.fillStyle = "rgb(84,120,58)"; g.fillRect(0, fh * 0.97, fw, fh * 0.03);
+      for (let i = 0; i < fw; i += 2) brush(i, fh * 0.97 + r() * 3, 4, 1, -1.2 + r() * 0.4, paint([96, 136, 64], 30, r));
+    });
+    sun.frame = offscreen(w, h, (fw, fh) => { // the card: worn vellum, a red rule and a gold rule, a numeral at the top
+      const r = seeded(50);
+      g.beginPath(); g.rect(0, 0, fw, fh); g.rect(px, py, pw, ph);
+      g.fillStyle = "rgb(232,218,186)"; g.fill("evenodd");
+      g.save(); g.beginPath(); g.rect(0, 0, fw, fh); g.rect(px, py, pw, ph); g.clip("evenodd");
+      for (let i = 0; i < fw * fh / 25; i++) brush(r() * fw, r() * fh, 3 + r() * 6, 1 + r() * 1.5, (r() - 0.5) * 0.6, paint([228, 212, 176], 22, r));
+      g.restore();
+      g.strokeStyle = "rgb(150,40,34)"; g.lineWidth = b * 0.12; g.strokeRect(px - b * 0.25, py - b * 0.25, pw + b * 0.5, ph + b * 0.5);
+      g.strokeStyle = "rgb(198,150,58)"; g.lineWidth = b * 0.1; g.strokeRect(px - b * 0.06, py - b * 0.06, pw + b * 0.12, ph + b * 0.12);
+      g.strokeStyle = "rgb(60,40,30)"; g.lineWidth = 1; g.strokeRect(b * 0.35, b * 0.35, fw - b * 0.7, fh - b * 0.7);
+      g.fillStyle = "rgb(70,44,30)"; g.font = `600 ${Math.round(b * 0.85)}px Georgia, "Times New Roman", serif`; g.textAlign = "center"; g.textBaseline = "middle";
+      g.fillText("XIX", fw / 2, py * 0.55);
+      for (const s of [-1, 1]) { g.beginPath(); g.arc(fw / 2 + s * b * 1.6, py * 0.55, b * 0.12, 0, TAU); g.fillStyle = "rgb(150,40,34)"; g.fill(); }
+      // a little gold sun-and-leaf ornament at the foot of the card
+      const fy = py + ph + (fh - py - ph) / 2;
+      g.beginPath(); g.arc(fw / 2, fy, b * 0.28, 0, TAU); roundShade(fw / 2, fy, b * 0.28, [255, 232, 150], [214, 160, 50], [150, 96, 24]);
+      for (const s of [-1, 1]) { g.save(); g.translate(fw / 2 + s * b * 0.9, fy); g.rotate(Math.PI / 2); leaf(b * 0.45, b * 0.18); g.fillStyle = "rgb(96,120,64)"; g.fill(); g.restore(); }
+    });
+    sun.R = Math.round(pw * 0.2);
+    sun.face = paintSunFace(sun.R);
+    sun.flower = paintSunflower(Math.round(pw * 0.2));
+  }
+  // the sun's height follows the pitch: low notes just over the wall, high notes near the top
   const goal = S.pitchOn ? Math.max(0, Math.min(1, (S.pitch - 0.8) / 2.6)) : 0.25;
   sun.y += (goal - sun.y) * Math.min(1, dt * 2.5);
-  sun.spin += dt * (0.1 + S.mid * 0.6);
+  sun.spin += dt * (0.05 + S.mid * 0.3);
   sun.smile += ((S.pitchOn ? sun.y : 0) - sun.smile) * Math.min(1, dt * 2);
-  g.save(); g.beginPath(); g.rect(x0, y0, w, h); g.clip();
-  g.fillStyle = "#F9EADF"; g.fillRect(x0, y0, w, h);
-  sun.dabs.sky.forEach(([x, y, l, wd, a, c]) => dab(X(x), Y(y), l * u, wd * u, a, c));
-  // pink watercolour-like clouds, kept as sharp shapes
-  for (const [cxp, cyp, s, sp] of [[-28, 20, 1, 0.6], [26, 32, 0.8, 0.45], [-8, 52, 0.7, 0.3]]) {
-    const ox = ((cxp + t * sp * 2 + 60) % 120) - 60;
-    g.fillStyle = "rgba(240,170,170,0.45)";
-    for (const [dx, dy, r] of [[0, 0, 6], [6, 1, 5], [-6, 1.5, 4.5], [11, 2.5, 3.5]]) { g.beginPath(); g.arc(X(ox + dx * s), Y(cyp + dy * s), r * s * u, 0, TAU); g.fill(); }
-  }
-  // the sun
-  const sy = Y(70 - sun.y * 48), R = 15 * u * (1 + S.bass * 0.05);
-  g.save(); g.translate(cx, sy);
-  for (let k = 0; k < 12; k++) { // wavy flame-shaped rays, long and short in turn
-    const a = sun.spin + k * TAU / 12, long = k % 2 === 0, e = S.spec[(k * 3) % 16];
-    const len = R * (long ? 0.95 : 0.6) * (1 + e * 0.45), wid = R * (long ? 0.2 : 0.16);
-    g.save(); g.rotate(a);
-    g.beginPath(); g.moveTo(R * 0.85, -wid);
-    g.bezierCurveTo(R + len * 0.4, -wid * 0.9 + Math.sin(t * 3 + k) * wid * 0.4, R + len * 0.7, wid * 0.3, R + len, Math.sin(t * 2 + k) * wid * 0.5);
-    g.bezierCurveTo(R + len * 0.6, wid * 0.6, R + len * 0.3, wid * 1.1, R * 0.85, wid);
-    g.closePath(); shape(long ? "#F28A1E" : "#F6A32A", "#D96A12", 1);
-    g.restore();
-  }
-  g.beginPath(); g.arc(0, 0, R, 0, TAU); shape("#F6A62A");
-  g.save(); g.beginPath(); g.arc(0, 0, R, 0, TAU); g.clip();
-  sun.dabs.face.forEach(([x, y, l, wd, a, c]) => dab(x * R, y * R, l * R, wd * R, a, c));
-  g.restore();
-  g.beginPath(); g.arc(0, 0, R, 0, TAU); shape(null, "#E2731A", u * 0.4);
-  // face: eyes closed in bliss low down, opening wide as it reaches the top
-  const open = Math.max(0, (sun.smile - 0.55) / 0.45);
-  for (const s of [-1, 1]) {
-    g.save(); g.translate(s * R * 0.36, -R * 0.08);
-    g.beginPath(); g.ellipse(0, 0, R * 0.2, R * 0.13 * open + 0.01, 0, 0, Math.PI, false); shape(open > 0.05 ? "#FFF6E0" : null);
-    if (open > 0.05) { g.beginPath(); g.arc(0, R * 0.04 * open, R * 0.06 * open, 0, TAU); shape("#5B4A1E"); }
-    g.beginPath(); g.ellipse(0, 0, R * 0.2, R * 0.07, 0, 0, Math.PI); shape(null, "#4F5A22", u * 0.45); // lid line
-    g.strokeStyle = "#4F5A22"; g.lineWidth = Math.max(1, u * 0.25);
-    for (let l = 0; l < 6; l++) { const a = 0.35 + l * 0.48; g.beginPath(); g.moveTo(Math.cos(a) * R * 0.2, Math.sin(a) * R * 0.07); g.lineTo(Math.cos(a) * R * 0.27, Math.sin(a) * R * 0.07 + R * 0.06); g.stroke(); }
-    g.beginPath(); g.ellipse(-s * 0, R * 0.22, R * 0.13, R * 0.08, 0, 0, TAU); shape(`rgba(226,80,60,${0.35 + S.mid * 0.3})`); // rosy cheek
-    g.restore();
-  }
-  g.beginPath(); g.moveTo(0, -R * 0.05); g.quadraticCurveTo(R * 0.06, R * 0.14, -R * 0.03, R * 0.2); shape(null, "#D2601A", u * 0.35);
-  const smile = 0.06 + sun.smile * 0.1 + S.pulse * 0.03;
-  g.beginPath(); g.moveTo(-R * 0.16, R * 0.36); g.quadraticCurveTo(0, R * (0.36 + smile), R * 0.16, R * 0.36);
-  g.quadraticCurveTo(0, R * (0.36 + smile * 0.3), -R * 0.16, R * 0.36); shape("#C8432A");
-  g.restore();
-  // rolling hills with a scatter of tiny flowers
-  [["#BFD77A", 74, 0.5], ["#9CC463", 80, 0.9], ["#7DB24E", 87, 1.4]].forEach(([col, base, ph], k) => {
-    g.beginPath(); g.moveTo(x0, y0 + h);
-    for (let i = 0; i <= 30; i++) { const x = -45 + i * 3; g.lineTo(X(x), Y(base + Math.sin(x * 0.07 + ph) * 3 + Math.sin(x * 0.15 + ph * 2) * 1.5)); }
-    g.lineTo(x0 + w, y0 + h); g.closePath(); shape(col);
-    for (let i = 0; i < 14; i++) {
-      const x = -42 + ((i * 37 + k * 13) % 84), y = base + 4 + ((i * 7) % 9), e = S.spec[(i + k * 5) % 16];
-      g.save(); g.translate(X(x), Y(y)); floret(u * (0.8 + k * 0.3) * (1 + e * 0.6), ["#FFFFFF", "#F7D84A", "#F29BB0"][(i + k) % 3], "#F08A1C", 1); g.restore();
+  const ox = x0 + px, oy = y0 + py, R = sun.R * (1 + S.bass * 0.04), cx = ox + pw / 2, cy = oy + ph * (0.52 - sun.y * 0.3);
+  g.save(); g.beginPath(); g.rect(ox, oy, pw, ph); g.clip();
+  blit(sun.sky, ox, oy);
+  // rays: straight gold spikes and wavy flames in turn, as on the old cards
+  g.save(); g.translate(cx, cy);
+  for (let k = 0; k < 32; k++) {
+    const a = sun.spin + k * TAU / 32, e = S.spec[k % 16], straight = k % 2 === 0;
+    const len = R * (straight ? 0.85 : 0.6) * (1 + e * 0.5), wd = R * (straight ? 0.09 : 0.11);
+    g.save(); g.rotate(a); g.beginPath();
+    if (straight) { g.moveTo(R * 0.9, -wd); g.lineTo(R + len, 0); g.lineTo(R * 0.9, wd); }
+    else {
+      g.moveTo(R * 0.9, -wd);
+      for (let i = 1; i <= 6; i++) { const p = i / 6; g.lineTo(R * 0.9 + len * p, Math.sin(p * 8 - t * 4 + k) * wd * 0.8 * p - wd * (1 - p * 0.85)); }
+      for (let i = 6; i >= 0; i--) { const p = i / 6; g.lineTo(R * 0.9 + len * p, Math.sin(p * 8 - t * 4 + k) * wd * 0.8 * p + wd * (1 - p * 0.85)); }
     }
-  });
-  // birds take off on the beat and drift across
-  sun.birds = sun.birds.filter(b => (b.x += dt * b.v) < 50);
-  sun.birds.forEach(b => { const f = Math.sin(t * 9 + b.p) * 0.8; g.beginPath(); g.moveTo(X(b.x - 1.6), Y(b.y - f)); g.quadraticCurveTo(X(b.x - 0.6), Y(b.y - 0.8), X(b.x), Y(b.y)); g.quadraticCurveTo(X(b.x + 0.6), Y(b.y - 0.8), X(b.x + 1.6), Y(b.y - f)); shape(null, "#5A4A3A", Math.max(1, u * 0.3)); });
+    g.closePath();
+    const rg = g.createLinearGradient(R, 0, R + len, 0); rg.addColorStop(0, "rgb(236,170,46)"); rg.addColorStop(1, straight ? "rgb(255,232,140)" : "rgb(250,206,90)");
+    g.fillStyle = rg; g.fill(); g.strokeStyle = "rgba(140,80,20,0.7)"; g.lineWidth = 0.8; g.stroke();
+    g.restore();
+  }
+  g.drawImage(sun.face, -sun.R, -sun.R, sun.R * 2, sun.R * 2);
+  // eyes: closed and calm low down, opening as the sun reaches the top
+  const open = Math.max(0.05, Math.min(1, sun.smile * 1.4));
+  for (const s of [-1, 1]) {
+    const ex = s * sun.R * 0.3, ey = -sun.R * 0.1, ew = sun.R * 0.16, eh = sun.R * 0.075 * open;
+    g.beginPath(); g.moveTo(ex - ew, ey); g.quadraticCurveTo(ex, ey - eh * 2, ex + ew, ey); g.quadraticCurveTo(ex, ey + eh * 1.2, ex - ew, ey);
+    g.fillStyle = "rgb(250,240,214)"; g.fill();
+    g.save(); g.clip(); g.beginPath(); g.arc(ex + Math.sin(t * 0.5) * ew * 0.2, ey - eh * 0.2, sun.R * 0.06, 0, TAU); g.fillStyle = "rgb(70,44,24)"; g.fill(); g.restore();
+    g.strokeStyle = "rgb(110,56,20)"; g.lineWidth = sun.R * 0.022; g.beginPath(); g.moveTo(ex - ew, ey); g.quadraticCurveTo(ex, ey - eh * 2 - sun.R * 0.01, ex + ew, ey); g.stroke(); // upper lid
+    g.lineWidth = sun.R * 0.01; g.beginPath(); g.moveTo(ex - ew * 0.8, ey + eh * 0.5 + sun.R * 0.02); g.quadraticCurveTo(ex, ey + eh * 1.4 + sun.R * 0.03, ex + ew * 0.8, ey + eh * 0.5 + sun.R * 0.02); g.stroke();
+  }
   g.restore();
+  // drops of gold light falling from the sun on the beat
+  sun.yods = sun.yods.filter(d => d.y < oy + ph * 0.8);
+  sun.yods.forEach(d => {
+    d.y += d.v * dt; d.x += Math.sin(t * 2 + d.p) * 6 * dt;
+    g.save(); g.translate(d.x, d.y); g.rotate(Math.sin(t * 2 + d.p) * 0.2); g.beginPath(); g.moveTo(0, -d.s * 1.8); g.quadraticCurveTo(d.s, 0, 0, d.s); g.quadraticCurveTo(-d.s, 0, 0, -d.s * 1.8);
+    roundShade(0, 0, d.s, [255, 236, 160], [232, 176, 54], [170, 110, 24]); g.restore();
+  });
+  sun.yodFrom = [cx, cy + R, pw];
+  // sunflowers over the wall turn their faces towards the sun, and nod to the music
+  [[0.1, 0.63], [0.27, 0.71], [0.5, 0.75], [0.73, 0.7], [0.9, 0.62]].forEach(([fx, fh], k) => {
+    const bx = ox + fx * pw, by = oy + wallY - py + ph * 0.06, nod = Math.sin(t * 1.4 + k) * 0.05 + S.spec[k * 3] * 0.12;
+    const hx = bx + (cx - bx) * 0.08 + Math.sin(t * 1.2 + k) * 2, hy = oy + ph * fh + nod * 20;
+    g.strokeStyle = "rgb(80,112,52)"; g.lineWidth = pw * 0.012; g.beginPath(); g.moveTo(bx, by); g.quadraticCurveTo(bx, (by + hy) / 2, hx, hy); g.stroke();
+    g.save(); g.translate((bx + hx) / 2, (by + hy) / 2 + 6); g.rotate(-0.6 * (k % 2 ? 1 : -1)); leaf(pw * 0.06, pw * 0.025); g.fillStyle = "rgb(86,122,56)"; g.fill(); g.restore();
+    const turn = Math.max(-0.5, Math.min(0.5, (cx - hx) / pw)), s = sun.flower.w * (0.75 + (k % 2) * 0.1);
+    g.save(); g.translate(hx, hy); g.rotate(turn * 0.6 + nod); g.scale(1 - Math.abs(turn) * 0.5, 0.92); g.drawImage(sun.flower, -s / 2, -s / 2, s, s); g.restore();
+  });
+  blit(sun.wall, ox, oy);
+  g.restore();
+  blit(sun.frame, x0, y0);
+}
+function sunBeat() {
+  if (!sun.yodFrom) return;
+  const [cx, cy, pw] = sun.yodFrom;
+  for (let k = 0; k < 2; k++) sun.yods.push({ x: cx + (Math.random() - 0.5) * pw * 0.6, y: cy, v: 30 + Math.random() * 30, s: 3 + Math.random() * 3, p: Math.random() * 6 });
 }
 
 // --- Oil-paint toolkit: pictures are painted once, stroke by stroke, onto hidden canvases and then reused ---
@@ -1684,7 +1837,7 @@ function heavenScene(t, dt, box) {
 }
 
 // --- Room 3, piece iii: a painted meadow of yellow flowers in the wind, a girl in a white dress with her arms open ---
-const meadow = { key: "", sky: null, hills: null, ground: null, sprites: [], clumps: [], clouds: [], gust: -1, wind: { x: 0, v: 0 }, petals: [] };
+const meadow = { key: "", sky: null, hills: null, ground: null, sprites: [], clumps: [], clouds: [], gusts: [], sway: 0, petals: [] };
 // One clump of rapeseed: thin stems topped with domes of little four-petal flowers, painted once and reused.
 function paintClump(s, seed) {
   return offscreen(s, s * 1.4, (cw, ch) => {
@@ -1788,23 +1941,31 @@ function meadowScene(t, dt, box) {
     const s = Math.round(h * 0.16);
     meadow.sprites = [0, 1, 2, 3, 4, 5].map(i => paintClump(s, 100 + i));
     const r = seeded(4); meadow.clumps = [];
-    for (let row = 0; row < 26; row++) { // rows from the horizon to the front, bigger and fewer as they come closer
-      const d = Math.pow((row + 1) / 26, 1.6), n = Math.round(30 - d * 20);
+    for (let row = 0; row < 22; row++) { // rows from the horizon to the front, bigger and fewer as they come closer
+      const d = Math.pow((row + 1) / 22, 1.9), n = Math.round(30 - d * 23);
       for (let i = 0; i < n; i++) meadow.clumps.push({ x: (i + r()) / n, d: d * (0.97 + r() * 0.06), sp: Math.floor(r() * 6), ph: r() * TAU });
     }
     meadow.clumps.sort((a, b) => a.d - b.d);
+    // smaller copies of each clump, so far-off flowers aren't shrunk from a big picture every frame
+    meadow.mips = meadow.sprites.map(sp => [0.25, 0.5].map(k => offscreen(sp.w * k, sp.h * k, (mw, mh) => g.drawImage(sp, 0, 0, mw, mh))));
+    // the far rows barely move, so they are painted into the field once
+    meadow.far = offscreen(w, h - hz, () => {
+      for (const c of meadow.clumps) if (c.d < 0.36) { const sc = 0.07 + c.d * c.d * 1.55, sp = meadow.sprites[c.sp], cw = sp.w * sc, ch = sp.h * sc; g.drawImage(sp, c.x * w - cw / 2, (h - hz) * c.d + ch * 0.25 - ch, cw, ch); }
+    });
   }
-  spring(meadow.wind, dt, 3, 1.2);
-  if (meadow.gust >= 0) { meadow.gust += dt * 0.7; if (meadow.gust > 1.4) meadow.gust = -1; }
+  // each beat sends a gust rolling across the field; gusts overlap instead of restarting, so nothing snaps back
+  meadow.gusts = meadow.gusts.filter(q => (q.x += dt * 0.45) < 1.6);
+  meadow.sway += (S.mid - meadow.sway) * Math.min(1, dt * 1.5); // the breeze follows the music slowly, not in jumps
   const windAt = (fx, ph) => {
-    const gu = meadow.gust >= 0 ? Math.exp(-Math.pow((fx - meadow.gust) * 5, 2)) : 0;
-    return Math.sin(fx * 6 - t * 1.8 + ph * 0.3) * (0.1 + S.mid * 0.18) + gu * 0.32 + meadow.wind.x * 0.12;
+    let gu = 0; for (const q of meadow.gusts) gu += q.a * Math.exp(-Math.pow((fx - q.x) * 3, 2)) * Math.min(1, q.x + 0.3);
+    return Math.sin(fx * 6 - t * 1.8 + ph * 0.3) * (0.1 + meadow.sway * 0.16) + Math.sin(fx * 13 - t * 3.1 + ph) * 0.03 + Math.min(gu, 0.4) * 0.6;
   };
   g.save(); g.beginPath(); g.rect(x0, y0, w, h); g.clip();
   blit(meadow.sky, x0, y0);
   meadow.clouds.forEach(cl => { cl.x += dt * cl.v * (0.5 + S.mid); if (cl.x > 1.05) cl.x = -cl.c.w / w; blit(cl.c, Math.round(x0 + cl.x * w), Math.round(y0 + cl.y * hz)); });
   blit(meadow.hills, x0, y0 + hz - h * 0.12);
   blit(meadow.ground, x0, y0 + hz);
+  blit(meadow.far, x0, y0 + hz);
   // the girl stands in the middle distance; clumps behind her are drawn first, the nearer ones over her legs
   const girlD = 0.38, sprite = meadow.sprites[0], wind = windAt(0.5, 0) * 2.2 + 0.25;
   const open = Math.min(1, 0.3 + Math.sin(t * 0.7) * 0.15 + S.mid * 0.6 + S.bass * 0.3);
@@ -1812,10 +1973,11 @@ function meadowScene(t, dt, box) {
   let girlDone = false;
   for (const c of meadow.clumps) {
     if (!girlDone && c.d > girlD + 0.03) { drawGirl(gx, gy, h * 0.0042, t, open, wind); girlDone = true; }
-    const sc = 0.07 + c.d * c.d * 1.55, sp = meadow.sprites[c.sp], cw = sp.w * sc, ch = sp.h * sc;
+    if (c.d < 0.36) continue;
+    const sc = 0.07 + c.d * c.d * 1.55, sp = sc < 0.25 ? meadow.mips[c.sp][0] : sc < 0.5 ? meadow.mips[c.sp][1] : meadow.sprites[c.sp], cw = meadow.sprites[c.sp].w * sc, ch = meadow.sprites[c.sp].h * sc;
     const bx = x0 + c.x * w, by = y0 + hz + (h - hz) * c.d + ch * 0.25;
     if (bx < x0 - cw || bx > x0 + w + cw) continue;
-    const lean = windAt(c.x, c.ph) * (0.6 + c.d * 0.6) + S.spec[c.sp * 2] * 0.05;
+    c.lean = (c.lean || 0) + (windAt(c.x, c.ph) * (0.6 + c.d * 0.6) - (c.lean || 0)) * Math.min(1, dt * 5); const lean = c.lean; // stems have a little weight, so they lag
     g.save(); g.translate(bx, by); g.rotate(lean); g.drawImage(sp, -cw / 2, -ch, cw, ch); g.restore();
   }
   if (!girlDone) drawGirl(gx, gy, h * 0.0042, t, open, wind);
@@ -1830,7 +1992,7 @@ function meadowScene(t, dt, box) {
   g.restore();
 }
 function meadowBeat() {
-  meadow.gust = 0; meadow.wind.v += 0.8 + S.bass;
+  if (meadow.gusts.length < 4) meadow.gusts.push({ x: -0.3, a: 0.25 + S.bass * 0.3 });
   if (W) for (let k = 0; k < 5; k++) meadow.petals.push({ x: W * (0.25 + Math.random() * 0.3), y: H * (0.35 + Math.random() * 0.4), vx: 30 + Math.random() * 50, vy: -30 - Math.random() * 40, a: Math.random() * TAU, s: 2 + Math.random() * 3, life: 4 });
 }
 
@@ -1856,7 +2018,7 @@ function onBeat() {
   }
   if (art === "loom") loom.spark = 2;
   if (art === "moon") dancerBeat();
-  if (art === "sun" && Math.random() < 0.4) sun.birds.push({ x: -50, y: 20 + Math.random() * 30, v: 8 + Math.random() * 6, p: Math.random() * 6 });
+  if (art === "sun") sunBeat();
   if (art === "meadow") meadowBeat();
   if (art === "manton") { manton.fr.v += manton.side * (1.4 + S.bass); manton.ang.v += manton.side * 0.6; manton.side *= -1; }
   if (art === "feria") { feria.wave = 0; feria.splash = 1; feria.palm.v += (Math.random() < 0.5 ? -1 : 1) * (0.6 + S.bass); }
