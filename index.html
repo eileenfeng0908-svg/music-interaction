@@ -84,6 +84,8 @@ button:disabled { color: var(--line); cursor: default; }
 <script src="assets/pig.js"></script>
 <script src="rain.js"></script>
 <script src="paint.js"></script>
+<script src="room2.js"></script>
+<script src="room3.js"></script>
 <script>
 // ================================================================
 // 1. THE ROOMS — five styles, each with three pieces.
@@ -902,7 +904,7 @@ function spring(sp, dt, stiff, damp) { sp.v += (-stiff * sp.x - damp * sp.v) * d
 // --- Room 2, piece i: a flamenca dancing in front of a huge orange moon ---
 // Her skirt is modelled as a real 3D cone of fabric: when her hips turn it swings round late, flares out
 // and lifts, and on strong beats she spins. Her arms move in a slow wave from shoulder to fingertips.
-const dancer = { yaw: { x: 0, v: 0 }, skirt: { x: 0, v: 0 }, goal: 0, spinGoal: 0, side: 1, ear: { x: 0, v: 0 }, stamp: [0, 0], lastSpin: -10, arm: 0, dabs: null };
+const dancer = { yaw: { x: 0, v: 0 }, skirt: { x: 0, v: 0 }, goal: 0, spinGoal: 0, side: 1, ear: { x: 0, v: 0 }, stamp: [0, 0], lastSpin: -10, arm: 0 };
 function dancerBeat() {
   dancer.side *= -1;
   dancer.goal = dancer.side * (0.32 + Math.min(0.3, S.bass * 0.3));
@@ -914,14 +916,6 @@ function seeded(seed) { // the same "random" brush marks every frame
 }
 function pick3(r, arr) { return arr[Math.floor(r() * arr.length)]; }
 function brushMarks(seed, n, make) { const r = seeded(seed), out = []; for (let i = 0; i < n; i++) out.push(make(r)); return out; }
-function dab(x, y, len, wid, ang, col) { g.beginPath(); g.ellipse(x, y, len, wid, ang, 0, TAU); g.fillStyle = col; g.fill(); }
-function moonMarks() {
-  return {
-    sky: brushMarks(1, 340, r => [-40 + r() * 80, r() * 84, 1.2 + r() * 2.8, 0.25 + r() * 0.4, (r() - 0.5) * 0.6, pick3(r, ["#2443A0", "#1E3A8A", "#2849A6", "#1F3C90"])]),
-    moon: brushMarks(2, 260, r => { const a = r() * TAU, d = Math.sqrt(r()) * 0.95; return [Math.cos(a) * d, Math.sin(a) * d, 0.04 + r() * 0.07, 0.012 + r() * 0.02, a + Math.PI / 2 + (r() - 0.5), pick3(r, ["#EE9135", "#E3831F", "#F19B42", "#E5862A"])]; }),
-    ground: brushMarks(3, 140, r => [-40 + r() * 80, 83 + r() * 17, 1.5 + r() * 3, 0.3 + r() * 0.4, (r() - 0.5) * 0.2, pick3(r, ["#67633D", "#55522F", "#6E6A44"])])
-  };
-}
 // An arm or leg: a smooth tapered shape through three points.
 function limb(a, b, c, w0, w1, w2) {
   const k = [2 * b[0] - (a[0] + c[0]) / 2, 2 * b[1] - (a[1] + c[1]) / 2], L = [], R = [];
@@ -953,8 +947,7 @@ const DRESS = [200, 32, 42], LINING = "#EADFCF", DOT = "#F7F1E6";
 function moonScene(t, dt, box) {
   const h = box.h, w = Math.min(box.w, h * 0.74), x0 = box.x + (box.w - w) / 2, y0 = box.y, u = h / 100, cx = x0 + w / 2;
   const Y = v => y0 + v * u, X = v => cx + v * u;
-  if (!dancer.dabs) dancer.dabs = moonMarks();
-  const D = dancer.dabs, energy = Math.min(1, S.mid + S.bass * 0.5);
+  const energy = Math.min(1, S.mid + S.bass * 0.5);
 
   // --- movement ---
   dancer.goal *= Math.pow(0.45, dt);
@@ -970,15 +963,16 @@ function moonScene(t, dt, box) {
 
   g.save(); g.beginPath(); g.rect(x0, y0, w, h); g.clip();
   // sky, moon and ground, laid in with brush marks
-  g.fillStyle = "#213E8E"; g.fillRect(x0, y0, w, h);
-  D.sky.forEach(([x, y, l, wd, a, c]) => dab(X(x), Y(y), l * u, wd * u, a, c));
+  // laid in as broad washes of mineral pigment; the plaster itself (room2.js) gives the texture
+  dancer.rect = { x: x0, y: y0, w, h };
+  const sky = g.createLinearGradient(0, y0, 0, Y(83)); sky.addColorStop(0, "#1F3A86"); sky.addColorStop(1, "#2A4A9A");
+  g.fillStyle = sky; g.fillRect(x0, y0, w, h);
   const mr = Math.min(w * 0.4, 31 * u) * (1 + S.bass * 0.025), my = Y(32);
-  g.beginPath(); g.arc(cx, my, mr, 0, TAU); shape("#E98A2C");
-  g.save(); g.beginPath(); g.arc(cx, my, mr, 0, TAU); g.clip();
-  D.moon.forEach(([x, y, l, wd, a, c]) => dab(cx + x * mr, my + y * mr, l * mr, wd * mr, a, c));
-  g.restore();
-  g.fillStyle = "#5E5B37"; g.fillRect(x0, Y(83), w, h - 83 * u);
-  D.ground.forEach(([x, y, l, wd, a, c]) => dab(X(x), Y(y), l * u, wd * u, a, c));
+  const mg = g.createRadialGradient(cx - mr * 0.2, my - mr * 0.25, mr * 0.1, cx, my, mr);
+  mg.addColorStop(0, "#F09A3E"); mg.addColorStop(0.75, "#E58828"); mg.addColorStop(1, "#D9791F");
+  g.beginPath(); g.arc(cx, my, mr, 0, TAU); g.fillStyle = mg; g.fill();
+  const gg = g.createLinearGradient(0, Y(83), 0, y0 + h); gg.addColorStop(0, "#66623C"); gg.addColorStop(1, "#57532F");
+  g.fillStyle = gg; g.fillRect(x0, Y(83), w, h - 83 * u);
 
   const hip = yaw * 1.6, Yw = 48, L = 36;
   g.beginPath(); g.ellipse(X(hip - 4), Y(88.5), (16 + flare * 12) * u, (2.6 + flare) * u, 0, 0, TAU); shape("rgba(28,26,12,0.5)");
@@ -1133,506 +1127,17 @@ function moonScene(t, dt, box) {
   g.beginPath(); g.arc(0, 2.5 * u, 1.45 * u, 0, TAU); shape("#F2EEE4", "#BDB6A6", 1);
   g.beginPath(); g.arc(-0.45 * u, 2.05 * u, 0.4 * u, 0, TAU); shape("#FFFFFF");
   g.restore();
-  // the fresco surface over everything
-  const fk = Math.round(w) + "x" + Math.round(h) + "@" + DPR;
-  if (dancer.frescoKey !== fk) { dancer.frescoKey = fk; dancer.fresco = frescoLayers(w, h); }
-  g.globalCompositeOperation = "multiply"; blit(dancer.fresco.mul, x0, y0);
-  g.globalCompositeOperation = "source-over"; blit(dancer.fresco.top, x0, y0);
   g.restore();
 }
 
-// A fresco surface laid over the whole picture: lime plaster that mottles the pigment, fine cracks,
-// and little flecks where the paint has worn away. Painted once per size, crisp at any resolution.
-function frescoLayers(w, h) {
-  const mul = offscreen(w, h, (fw, fh) => {
-    const r = seeded(71);
-    g.fillStyle = "rgb(246,240,228)"; g.fillRect(0, 0, fw, fh);
-    for (let i = 0; i < fw * fh / 18; i++) { // mottled lime: patches a little darker or warmer
-      const x = r() * fw, y = r() * fh, n = fbm(x * 0.012, y * 0.012);
-      brush(x, y, 3 + r() * 6, 2 + r() * 3, r() * TAU, paint(mixc([255, 252, 244], [196, 172, 140], Math.max(0, n - 0.25) * 1.6), 14, r));
-    }
-    for (let i = 0; i < fw * fh / 60; i++) { g.fillStyle = r() < 0.5 ? "rgba(150,130,110,0.35)" : "rgba(120,100,90,0.25)"; g.fillRect(r() * fw, r() * fh, 1, 1); } // grit
-    g.lineCap = "round";
-    for (let c = 0; c < 9; c++) { // hairline cracks wandering through the plaster
-      let x = r() * fw, y = r() * fh, a = r() * TAU;
-      g.strokeStyle = "rgba(150,124,100,0.6)"; g.lineWidth = 0.5; g.beginPath(); g.moveTo(x, y);
-      for (let s = 0; s < 40; s++) { a += (r() - 0.5) * 0.9; x += Math.cos(a) * 4; y += Math.sin(a) * 4; g.lineTo(x, y); if (r() < 0.06) { g.moveTo(x, y); a += (r() - 0.5) * 2; } }
-      g.stroke();
-    }
-  });
-  const top = offscreen(w, h, (fw, fh) => {
-    const r = seeded(72);
-    g.fillStyle = "rgba(244,236,220,0.2)"; g.fillRect(0, 0, fw, fh); // a chalky veil, like dry lime
-    for (let i = 0; i < 600; i++) { // worn flecks showing the plaster underneath
-      const x = r() * fw, y = r() * fh;
-      if (fbm(x * 0.02, y * 0.02) < 0.55) continue;
-      g.fillStyle = `rgba(240,230,210,${0.4 + r() * 0.4})`; g.beginPath(); g.ellipse(x, y, 1 + r() * 3, 0.6 + r() * 1.5, r() * TAU, 0, TAU); g.fill();
-    }
-  });
-  return { mul, top };
-}
+// --- Room 2, piece ii: the embroidered silk shawl lives in room2.js ---
 
-// --- Room 2, piece ii: an embroidered silk shawl (mantón) whose long fringe dances to the compás ---
-const manton = { ang: { x: 0, v: 0 }, fr: { x: 0, v: 0 }, side: 1 };
-function rose(r, open, petal, deep) {
-  for (let ring = 0; ring < 3; ring++) {
-    const n = 7 - ring, rr = r * (1 - ring * 0.28) * (ring === 0 ? 0.9 + open * 0.15 : 1);
-    g.beginPath();
-    for (let i = 0; i <= n; i++) {
-      const a = (i / n) * TAU + ring * 0.4, b = ((i + 0.5) / n) * TAU + ring * 0.4;
-      if (i === 0) g.moveTo(Math.cos(a) * rr * 0.8, Math.sin(a) * rr * 0.8);
-      else g.quadraticCurveTo(Math.cos(b - TAU / n) * rr * 1.15, Math.sin(b - TAU / n) * rr * 1.15, Math.cos(a) * rr * 0.8, Math.sin(a) * rr * 0.8);
-    }
-    g.closePath(); shape(ring === 1 ? deep : petal, deep, 1);
-  }
-  g.beginPath(); g.arc(0, 0, r * 0.22, 0, TAU); shape(deep);
-  g.beginPath(); g.arc(r * 0.05, -r * 0.04, r * 0.1, 0, TAU); shape(petal);
-}
-// Silk crêpe for the shawl: fine threads running along the square's edges, with slubs here and there.
-function paintSilk(d) {
-  return offscreen(2 * d, 2 * d, () => {
-    const r = seeded(88);
-    g.translate(d, d); g.rotate(Math.PI / 4);
-    for (let i = -1.5 * d; i < 1.5 * d; i += 1.6) {
-      for (let k = 0; k < 2; k++) {
-        g.strokeStyle = k ? `rgba(255,214,200,${0.06 + r() * 0.08})` : `rgba(60,0,10,${0.08 + r() * 0.1})`; g.lineWidth = 0.6;
-        g.beginPath(); if (k) { g.moveTo(i, -1.5 * d); g.lineTo(i, 1.5 * d); } else { g.moveTo(-1.5 * d, i); g.lineTo(1.5 * d, i); } g.stroke();
-      }
-    }
-    for (let i = 0; i < d * 3; i++) { const x = (r() - 0.5) * 2.8 * d, y = (r() - 0.5) * 2.8 * d; brush(x, y, 2 + r() * 5, 0.5, 0, r() < 0.5 ? "rgba(240,150,140,0.35)" : "rgba(90,8,16,0.35)"); }
-  });
-}
-function mantonScene(t, dt, box) {
-  const h = box.h, d = Math.min(h * 0.4, box.w * 0.42), cx = box.x + box.w / 2, top = box.y + h * 0.02;
-  spring(manton.ang, dt, 6, 1.6); spring(manton.fr, dt, 10, 1.4);
-  const ang = manton.ang.x * 0.05 + Math.sin(t * 0.6) * 0.012;
-  const pt = (x, y) => [cx + x * Math.cos(ang) - y * Math.sin(ang), top + x * Math.sin(ang) + y * Math.cos(ang)];
-  const T = pt(0, 0), Lc = pt(-d, d), B = pt(0, 2 * d), Rc = pt(d, d);
-  // the fringe hangs straight down from the two lower edges
-  const len = d * 0.42;
-  const strands = Math.round(d / 3);
-  for (const [a, b, side] of [[Lc, B, -1], [B, Rc, 1]]) {
-    for (let i = 0; i <= strands; i++) {
-      const p = i / strands, x = a[0] + (b[0] - a[0]) * p, y = a[1] + (b[1] - a[1]) * p;
-      const q = side < 0 ? p : 1 - p; // nearer the bottom corner, the fringe swings more
-      const swing = len * (manton.fr.x * (0.25 + q * 0.35) + Math.sin(t * 2.2 + i * 0.18) * 0.05 * (0.5 + S.high * 3));
-      const l = len * (0.92 + 0.08 * Math.sin(i * 1.7));
-      g.beginPath(); g.moveTo(x, y); g.bezierCurveTo(x + swing * 0.1, y + l * 0.4, x + swing * 0.6, y + l * 0.75, x + swing, y + l);
-      g.strokeStyle = i % 3 === 0 ? "#D8473C" : "#9E1E22"; g.lineWidth = 1.2; g.stroke();
-    }
-  }
-  // the shawl itself
-  g.save(); g.translate(T[0], T[1]); g.rotate(ang);
-  const diamond = inset => { g.beginPath(); g.moveTo(0, inset * 1.414); g.lineTo(-d + inset * 1.414, d); g.lineTo(0, 2 * d - inset * 1.414); g.lineTo(d - inset * 1.414, d); g.closePath(); };
-  diamond(0); shape("#B5272A");
-  // the silk: woven threads, and soft folds hanging from the top corner that sway as the shawl swings
-  if (!manton.silk || manton.silkD !== Math.round(d) + "@" + DPR) { manton.silkD = Math.round(d) + "@" + DPR; manton.silk = paintSilk(d); }
-  g.save(); diamond(0); g.clip();
-  for (let k = 0; k < 7; k++) {
-    const fx = (-0.95 + k * 0.32 + manton.ang.x * 0.06 + Math.sin(t * 0.7 + k * 1.3) * 0.03) * d, fw = d * (0.08 + (k % 3) * 0.03);
-    const fg = g.createLinearGradient(fx - fw, 0, fx + fw, 0);
-    fg.addColorStop(0, "rgba(80,0,12,0)"); fg.addColorStop(0.45, k % 2 ? "rgba(80,0,12,0.22)" : "rgba(255,190,170,0.16)"); fg.addColorStop(1, "rgba(80,0,12,0)");
-    g.fillStyle = fg; g.beginPath(); g.moveTo(0, 0); g.lineTo(fx - fw * 2.2, 2 * d); g.lineTo(fx + fw * 2.2, 2 * d); g.closePath(); g.fill();
-  }
-  g.drawImage(manton.silk, -d, 0, 2 * d, 2 * d);
-  g.restore();
-  diamond(d * 0.1); shape(null, "#F1DFC0", 1.2);
-  diamond(d * 0.13); shape(null, "#F1DFC0", 0.8);
-  // a border of small cream flowers between the two lines
-  for (let s = 0; s < 4; s++) {
-    const c1 = [[0, 0], [-d, d], [0, 2 * d], [d, d]][s], c2 = [[-d, d], [0, 2 * d], [d, d], [0, 0]][s];
-    const n = 9;
-    for (let i = 1; i < n; i++) {
-      const p = i / n, x = c1[0] + (c2[0] - c1[0]) * p, y = c1[1] + (c2[1] - c1[1]) * p;
-      const toC = [0 - x, d - y], l = Math.hypot(toC[0], toC[1]);
-      g.save(); g.translate(x + toC[0] / l * d * 0.08, y + toC[1] / l * d * 0.08);
-      floret(d * 0.022 * (1 + S.spec[(i + s * 4) % 16] * 0.5), "#F1DFC0", "#E7A93E", 1); g.restore();
-    }
-  }
-  // stems and leaves winding out from the centre
-  g.save(); g.translate(0, d);
-  for (let k = 0; k < 8; k++) {
-    g.save(); g.rotate(k * TAU / 8 + Math.PI / 8);
-    g.beginPath(); g.moveTo(0, d * 0.12); g.bezierCurveTo(d * 0.12, d * 0.25, -d * 0.1, d * 0.4, d * 0.03, d * 0.55);
-    shape(null, "#5E8A4A", 1.5);
-    for (const [ly, side] of [[0.28, 1], [0.42, -1]]) {
-      g.save(); g.translate(d * 0.02, d * ly); g.rotate(side * 1.1 + Math.sin(t * 1.4 + k) * 0.1);
-      leaf(d * 0.07, d * 0.03); shape(k % 2 ? "#4F7F45" : "#7FA65A"); g.restore();
-    }
-    g.restore();
-  }
-  // roses: one big one in the middle, eight around it, each opening with its own part of the sound
-  const roses = [[0, 0, 0.2, 0]];
-  for (let k = 0; k < 8; k++) roses.push([Math.cos(k * TAU / 8 + Math.PI / 8) * d * 0.5, Math.sin(k * TAU / 8 + Math.PI / 8) * d * 0.5, k % 2 ? 0.1 : 0.13, k + 1]);
-  for (let k = 0; k < 4; k++) roses.push([Math.cos(k * TAU / 4) * d * 0.3, Math.sin(k * TAU / 4) * d * 0.3, 0.07, k + 10]);
-  const cols = [["#F2B6A8", "#C9384A"], ["#F3E3C3", "#D98A3A"], ["#E9798A", "#8E1C34"], ["#F6CF6A", "#C2552A"]];
-  roses.forEach(([x, y, s, i]) => {
-    const e = S.spec[(i * 5) % 16];
-    g.save(); g.translate(x, y); g.rotate(Math.sin(t * 0.4 + i) * 0.15 + i);
-    const c = cols[i % 4];
-    rose(d * s * (0.9 + e * 0.35 + (i === 0 ? S.pulse * 0.08 : 0)), e, c[0], c[1]);
-    g.restore();
-  });
-  g.restore();
-  g.save(); diamond(0); g.clip(); g.globalAlpha = 0.5; g.drawImage(manton.silk, -d, 0, 2 * d, 2 * d); g.globalAlpha = 1; g.restore(); // the stitches sit in the weave too
-  g.restore();
-}
-
-// --- Room 2, piece iii: a tiled Spanish house front (after Gaudí's Casa Vicens) that plays along ---
-// Checkerboard bands flip in a wave on each beat, marigold tiles bloom, lattice shutters open with the music,
-// the fountain leaps with the claps and a palm sways overhead.
-const feria = { wave: -1, splash: 0, palm: { x: 0, v: 0 } };
-const V = { red: "#C21F2C", redDark: "#8E1420", green: "#1F7A58", white: "#F4F1E8", cream: "#EBD8A2", creamDark: "#C9B27A", stone: "#D6A57A", iron: "#1C1A1A", orange: "#F0952B", teal: "#1F6F6A" };
-function checkerBand(x, y, w, h, rows, seed) {
-  const s = h / rows, cols = Math.max(1, Math.round(w / s)), cw = w / cols;
-  for (let j = 0; j < rows; j++) for (let i = 0; i < cols; i++) {
-    const pos = (x + (i + 0.5) * cw) / W, flip = feria.wave >= 0 && Math.abs(pos - feria.wave) < 0.05;
-    g.fillStyle = ((i + j + seed) % 2 === 0) !== flip ? V.green : V.white;
-    g.fillRect(Math.floor(x + i * cw), Math.floor(y + j * s), Math.ceil(cw), Math.ceil(s));
-  }
-}
-function marigoldTile(x, y, s, e, k) {
-  g.fillStyle = V.white; g.fillRect(x, y, s, s);
-  g.save(); g.beginPath(); g.rect(x, y, s, s); g.clip();
-  g.translate(x + s / 2, y + s / 2);
-  for (let l = 0; l < 3; l++) { g.save(); g.rotate(k + l * 2.1); g.translate(0, -s * 0.32); leaf(s * 0.3, s * 0.13); shape(V.teal); g.restore(); }
-  g.rotate(k * 0.5 + e * 0.6);
-  const r = s * (0.24 + e * 0.12);
-  for (let p = 0; p < 12; p++) { g.save(); g.rotate(p * TAU / 12); g.beginPath(); g.ellipse(0, -r * 0.62, r * 0.22, r * 0.45, 0, 0, TAU); shape(p % 2 ? V.orange : "#F7B947"); g.restore(); }
-  g.beginPath(); g.arc(0, 0, r * 0.32, 0, TAU); shape("#E07A1F");
-  g.fillStyle = "#6B3A12";
-  for (let d = 0; d < 6; d++) { g.beginPath(); g.arc(Math.cos(d) * r * 0.16, Math.sin(d) * r * 0.16, Math.max(0.8, r * 0.05), 0, TAU); g.fill(); }
-  g.restore();
-  g.strokeStyle = "rgba(30,60,50,0.25)"; g.lineWidth = 1; g.strokeRect(x + 0.5, y + 0.5, s - 1, s - 1);
-}
-function marigoldBand(x, y, w, s, band) {
-  const n = Math.max(1, Math.round(w / s)), tw = w / n;
-  for (let i = 0; i < n; i++) marigoldTile(x + i * tw, y, tw, S.spec[(i + band) % 16], i * 1.3 + band);
-}
-function corbels(x, y, w, s) { // the stepped red brackets under each tiled ledge
-  const n = Math.max(1, Math.round(w / s)), tw = w / n;
-  for (let i = 0; i < n; i++) {
-    const cx = x + i * tw;
-    g.beginPath(); g.moveTo(cx + tw * 0.15, y); g.lineTo(cx + tw * 0.85, y); g.lineTo(cx + tw * 0.75, y + s * 0.35); g.lineTo(cx + tw * 0.62, y + s * 0.35);
-    g.lineTo(cx + tw * 0.55, y + s * 0.7); g.lineTo(cx + tw * 0.45, y + s * 0.7); g.lineTo(cx + tw * 0.38, y + s * 0.35); g.lineTo(cx + tw * 0.25, y + s * 0.35); g.closePath();
-    shape(V.red, V.redDark, 1);
-  }
-}
-function lattice(x, y, w, h, open, glow) { // cream shutters woven like a basket; they swing open with the music
-  g.fillStyle = "#3A1C14"; g.fillRect(x, y, w, h);
-  g.globalAlpha = glow; g.fillStyle = "#F7BE5E"; g.fillRect(x, y, w, h); g.globalAlpha = 1;
-  for (const side of [0, 1]) {
-    const pw = (w / 2) * (1 - open * 0.75), px = side ? x + w - pw : x;
-    g.fillStyle = V.cream; g.fillRect(px, y, pw, h);
-    const cells = 4, cs = Math.min(pw / 2, h / (cells * 2)), cols = Math.max(1, Math.floor(pw / cs)), rows = Math.max(1, Math.floor(h / cs));
-    const ox = px + (pw - cols * cs) / 2, oy = y + (h - rows * cs) / 2;
-    g.fillStyle = V.creamDark;
-    for (let j = 0; j < rows; j++) for (let i = 0; i < cols; i++) {
-      const cx = ox + i * cs, cy = oy + j * cs;
-      for (let b = 0; b < 3; b++) {
-        if ((i + j) % 2) g.fillRect(cx + cs * 0.12, cy + cs * (0.18 + b * 0.27), cs * 0.76, Math.max(1, cs * 0.12));
-        else g.fillRect(cx + cs * (0.18 + b * 0.27), cy + cs * 0.12, Math.max(1, cs * 0.12), cs * 0.76);
-      }
-    }
-    g.strokeStyle = "#B49A5E"; g.lineWidth = 1.5; g.strokeRect(px + 0.75, y + 0.75, pw - 1.5, h - 1.5);
-  }
-}
-function ironRail(x, y, w, h) { // wrought-iron balcony with curled scrolls
-  g.strokeStyle = V.iron; g.lineWidth = 2;
-  g.beginPath(); g.moveTo(x, y); g.lineTo(x + w, y); g.moveTo(x, y + h); g.lineTo(x + w, y + h); g.stroke();
-  const n = Math.max(2, Math.round(w / (h * 0.8))), sw = w / n;
-  g.lineWidth = 1.3;
-  for (let i = 0; i < n; i++) {
-    const cx = x + (i + 0.5) * sw;
-    g.beginPath(); g.moveTo(x + i * sw, y); g.lineTo(x + i * sw, y + h); g.stroke();
-    for (const d of [-1, 1]) {
-      g.beginPath(); g.moveTo(cx, y + h * 0.5);
-      g.bezierCurveTo(cx + d * sw * 0.35, y + h * 0.5, cx + d * sw * 0.4, y + h * 0.12, cx + d * sw * 0.18, y + h * 0.18);
-      g.arc(cx + d * sw * 0.2, y + h * 0.26, sw * 0.08, -Math.PI / 2, Math.PI, d < 0); g.stroke();
-      g.beginPath(); g.moveTo(cx, y + h * 0.5);
-      g.bezierCurveTo(cx + d * sw * 0.35, y + h * 0.5, cx + d * sw * 0.4, y + h * 0.88, cx + d * sw * 0.18, y + h * 0.82); g.stroke();
-    }
-  }
-}
-function palmFrond(x, y, len, ang, droop) {
-  g.save(); g.translate(x, y); g.rotate(ang);
-  const pts = [];
-  for (let i = 0; i <= 14; i++) { const s = i / 14; pts.push([s * len, s * s * len * droop]); }
-  g.strokeStyle = "#2E5A2A"; g.lineWidth = 2;
-  g.beginPath(); pts.forEach(([px, py], i) => (i ? g.lineTo(px, py) : g.moveTo(px, py))); g.stroke();
-  for (let i = 1; i < 14; i++) {
-    const [px, py] = pts[i], l = len * 0.3 * Math.sin((i / 14) * Math.PI) + 4, sp = Math.atan2(2 * (i / 14) * droop, 1);
-    for (const d of [-1, 1]) {
-      g.save(); g.translate(px, py); g.rotate(sp + d * 2.2 + 0.25); // leaflets fan out and hang a little
-      leaf(l, l * 0.11); shape((i + (d > 0 ? 1 : 0)) % 2 ? "#3F7B33" : "#2C6428"); g.restore();
-    }
-  }
-  g.restore();
-}
-function feriaScene(t, dt, box) {
-  const h = box.h, w = Math.min(box.w, h * 0.8), x0 = box.x + (box.w - w) / 2, y0 = box.y;
-  const X = v => x0 + v * w / 100, Y = v => y0 + v * h / 100, pw = w / 100, ph = h / 100;
-  if (feria.wave >= 0) { feria.wave += dt * 0.9; if (feria.wave > 1.1) feria.wave = -1; }
-  feria.splash *= Math.pow(0.15, dt);
-  spring(feria.palm, dt, 4, 0.8);
-  g.save(); g.beginPath(); g.rect(x0, y0, w, h); g.clip();
-  // sky and paving
-  g.fillStyle = "#BFC8EA"; g.fillRect(x0, y0, w, h);
-  g.fillStyle = "#E8E2D6"; g.fillRect(x0, Y(90), w, h * 0.1);
-
-  // tower in the middle, with a tiled shaft and a red cone roof
-  checkerBand(X(46), Y(4), 8 * pw, 12 * ph, 8, 0);
-  g.fillStyle = V.red; g.fillRect(X(44.5), Y(3.5), 11 * pw, 2.2 * ph);
-  g.beginPath(); g.moveTo(X(44), Y(3.6)); g.lineTo(X(50), Y(-2)); g.lineTo(X(56), Y(3.6)); g.closePath(); shape(V.red, V.redDark, 1);
-  // the gable
-  g.beginPath(); g.moveTo(X(6), Y(26)); g.lineTo(X(50), Y(10)); g.lineTo(X(94), Y(26)); g.closePath(); shape(V.red);
-  for (const d of [-1, 1]) { // tiled bands along both roof edges
-    g.save(); g.translate(X(50), Y(10)); g.rotate(d > 0 ? Math.atan2(16 * ph, 44 * pw) : Math.PI - Math.atan2(16 * ph, 44 * pw)); if (d < 0) g.scale(1, -1);
-    checkerBand(0, -1.2 * ph, Math.hypot(44 * pw, 16 * ph), 2.4 * ph, 2, 1);
-    g.restore();
-  }
-  // stepped zigzag inside the gable
-  for (let k = 0; k < 6; k++) {
-    const hw = (6 - k) * 5.5;
-    g.fillStyle = k % 2 ? V.white : V.green;
-    g.fillRect(X(50 - hw), Y(25 - k * 1.8), hw * 2 * pw, 0.9 * ph);
-  }
-  // main wall
-  g.fillStyle = V.red; g.fillRect(X(4), Y(26), 92 * pw, 64 * ph);
-  checkerBand(X(4), Y(26), 92 * pw, 2.4 * ph, 2, 0);
-  corbels(X(4), Y(28.4), 92 * pw, 3.4 * ph);
-  // upper floor: tall pointed windows with white posts; each one glows with its part of the music
-  [8.5, 20.5, 32.5, 59.5, 71.5, 83.5].forEach((px, i) => { // mirrored about the middle pillar
-    const wx = X(px), ww = 8 * pw, wy = Y(33), wh = 14 * ph;
-    const e = Math.max(0, Math.min(1, (S.spec[(Math.min(i, 5 - i) * 3 + 3) % 16] - 0.15) * 2.4));
-    g.beginPath(); g.moveTo(wx, wy + wh); g.lineTo(wx, wy + ww * 0.5); g.quadraticCurveTo(wx, wy, wx + ww / 2, wy - ww * 0.25);
-    g.quadraticCurveTo(wx + ww, wy, wx + ww, wy + ww * 0.5); g.lineTo(wx + ww, wy + wh); g.closePath();
-    shape("#3A1C14"); g.globalAlpha = e; shape("#F7BE5E"); g.globalAlpha = 1;
-    g.fillStyle = V.white; g.fillRect(wx - 1.6 * pw, wy - ww * 0.1, 1.6 * pw, wh + ww * 0.1); g.fillRect(wx + ww, wy - ww * 0.1, 1.6 * pw, wh + ww * 0.1);
-  });
-  checkerBand(X(45.4), Y(28.4), 9.2 * pw, 21 * ph, 8, 1); // a tiled pillar down the middle
-  // marigold tile frieze
-  marigoldBand(X(4), Y(48), 92 * pw, 5.2 * pw, 0);
-  checkerBand(X(4), Y(48) + 5.2 * pw, 92 * pw, 2 * ph, 2, 1);
-  // stone storey with the balcony and lattice shutters
-  const sy = Y(48) + 5.2 * pw + 2 * ph;
-  g.fillStyle = V.stone; g.fillRect(X(4), sy, 92 * pw, Y(70) - sy);
-  g.strokeStyle = "rgba(150,100,60,0.35)"; g.lineWidth = 1;
-  for (let r = 0; r < 4; r++) { g.beginPath(); g.moveTo(X(4), sy + (r + 0.5) * (Y(70) - sy) / 4); g.lineTo(X(96), sy + (r + 0.5) * (Y(70) - sy) / 4); g.stroke(); }
-  const open = Math.min(1, S.mid * 1.3), glow = 0.2 + S.bass * 0.8;
-  [14, 34, 66, 86].forEach((lx, i) => lattice(X(lx) - 4 * pw, sy + 1.5 * ph, 8 * pw, Y(70) - sy - 4 * ph, Math.min(1, open * (i === 0 || i === 3 ? 0.7 : 1)), glow));
-  ironRail(X(8), Y(61), 84 * pw, 6 * ph);
-  // pots on the balcony with spiky plants
-  for (const px of [10, 90]) {
-    g.beginPath(); g.moveTo(X(px - 3), Y(58)); g.lineTo(X(px + 3), Y(58)); g.lineTo(X(px + 2.2), Y(61)); g.lineTo(X(px - 2.2), Y(61)); g.closePath(); shape("#C0663C");
-    for (let k = 0; k < 7; k++) { g.save(); g.translate(X(px), Y(58)); g.rotate(-1.2 + k * 0.4 + Math.sin(t * 1.5 + k) * 0.05 * (1 + S.bass * 3)); leaf(4.5 * ph, 0.8 * pw); shape(k % 2 ? "#4C8A3A" : "#2E6A30"); g.restore(); }
-  }
-  // the balcony ledge, lined with checker tiles
-  checkerBand(X(4), Y(70), 92 * pw, 2.4 * ph, 2, 0);
-  corbels(X(4), Y(72.4), 92 * pw, 2.6 * ph);
-  // ground floor: big lattice panels on each side of a fountain
-  marigoldBand(X(4), Y(75), 92 * pw, 4 * pw, 5);
-  const gy = Y(75) + 4 * pw;
-  g.fillStyle = V.redDark; g.fillRect(X(4), gy, 92 * pw, Y(90) - gy);
-  [8, 25, 60, 77].forEach(lx => lattice(X(lx), gy + 1 * ph, 15 * pw, Y(90) - gy - 1 * ph, Math.min(1, S.high * 1.5), glow * 0.7));
-  // fountain: tiled basin, stone bowl, water that leaps with the claps
-  g.beginPath(); g.ellipse(X(50), Y(90), 10 * pw, 2 * ph, 0, 0, TAU); shape("#7FB8C9");
-  g.save(); g.beginPath(); g.rect(X(40), Y(86), 20 * pw, 5 * ph); g.clip(); marigoldBand(X(40), Y(86), 20 * pw, 4 * ph, 9); g.restore();
-  g.fillStyle = "#E7DCCB"; g.fillRect(X(49), Y(77), 2 * pw, 9 * ph);
-  g.beginPath(); g.ellipse(X(50), Y(77), 5.5 * pw, 1.3 * ph, 0, 0, Math.PI); g.lineTo(X(44.5), Y(77)); g.closePath(); shape("#E7DCCB", "#B5A890", 1);
-  const jet = 4 + S.high * 10 + feria.splash * 6;
-  g.strokeStyle = "#E8F5FA"; g.lineWidth = 1.6;
-  for (let k = -3; k <= 3; k++) {
-    const sx = X(50), sy0 = Y(76.5), ex = X(50 + k * 2.2), top = sy0 - jet * ph * (1 - Math.abs(k) * 0.12);
-    g.beginPath(); g.moveTo(sx, sy0); g.quadraticCurveTo((sx + ex) / 2 + k * pw, top, ex + k * 0.8 * pw, Y(77.5)); g.stroke();
-  }
-  for (let d = 0; d < 10; d++) { // a few drops
-    const a = (d / 10) * TAU + t * 2, r = (3 + ((t * 3 + d * 0.37) % 1) * 4) * pw;
-    g.beginPath(); g.arc(X(50) + Math.cos(a) * r, Y(76) - (jet * 0.5 + Math.sin(d * 2.1 + t * 4) * 1.5) * ph, Math.max(1, pw * 0.3), 0, TAU); shape("#E8F5FA");
-  }
-  // terracotta pots along the courtyard
-  [[4, 0.75], [96, 0.75], [36, 0.55], [64, 0.55]].forEach(([px, s], i) => {
-    const top = Y(91) - 6 * ph * s;
-    g.beginPath(); g.moveTo(X(px) - 3.2 * pw * s, top); g.lineTo(X(px) + 3.2 * pw * s, top); g.lineTo(X(px) + 2.4 * pw * s, Y(97)); g.lineTo(X(px) - 2.4 * pw * s, Y(97)); g.closePath(); shape("#C46A3E");
-    g.fillStyle = "#A9552F"; g.fillRect(X(px) - 3.4 * pw * s, top, 6.8 * pw * s, 1 * ph);
-    for (let k = 0; k < 9; k++) {
-      g.save(); g.translate(X(px), top); g.rotate(-1.4 + k * 0.35 + Math.sin(t * 1.2 + k + i) * 0.04 * (1 + S.bass * 4));
-      leaf(8 * ph * s * (0.8 + (k % 3) * 0.15), 2 * pw * s); shape(k % 2 ? "#3F8A3C" : "#2B6B32"); g.restore();
-    }
-  });
-  // a palm reaching in from the top corner, swaying with the bass
-  const sway = feria.palm.x * 0.2 + Math.sin(t * 0.6) * 0.04 + S.bass * 0.05;
-  [[2.2, 0.35], [2.6, 0.28], [3.0, 0.22], [1.8, 0.4], [3.4, 0.15]].forEach(([a, droop], i) => palmFrond(X(102), Y(-2), 34 * pw * (1 - i * 0.06), a + sway * (1 + i * 0.2), droop));
-  g.restore();
-}
+// --- Room 2, piece iii: the house front after Casa Vicens is built in 3D in room2.js ---
 
 // ================================================================
 // Room 3 scenes — everything bright, happy, a little hand-made
 // ================================================================
-// --- Room 3, piece i: an old painted card of the Sun; the sun climbs as the scale climbs and opens its eyes at the top ---
-const sun = { y: 0.3, spin: 0, smile: 0, key: "", sky: null, wall: null, frame: null, face: null, flower: null, yods: [] };
-// The sun's face, painted once like egg tempera on gold: modelled cheeks, a long nose, full lips, engraved rim.
-function paintSunFace(R) {
-  return offscreen(R * 2, R * 2, () => {
-    const r = seeded(19);
-    g.translate(R, R);
-    g.beginPath(); g.arc(0, 0, R, 0, TAU);
-    const gr = g.createRadialGradient(-R * 0.3, -R * 0.35, R * 0.05, 0, 0, R);
-    gr.addColorStop(0, "rgb(255,240,170)"); gr.addColorStop(0.55, "rgb(240,188,62)"); gr.addColorStop(1, "rgb(196,122,28)");
-    g.fillStyle = gr; g.fill();
-    g.save(); g.beginPath(); g.arc(0, 0, R, 0, TAU); g.clip();
-    for (let i = 0; i < 900; i++) { // tempera strokes following the round of the face
-      const a = r() * TAU, d = Math.sqrt(r()) * R, x = Math.cos(a) * d, y = Math.sin(a) * d, k = d / R;
-      g.globalAlpha = 0.35; brush(x, y, R * 0.03 + r() * R * 0.03, R * 0.008, a + Math.PI / 2, paint(mixc([255, 226, 130], [190, 118, 30], k * 0.8 + (x + y) / R * 0.15), 26, r));
-    }
-    g.globalAlpha = 1;
-    const shade = (cx, cy, rx, ry, col) => { const sg = g.createRadialGradient(cx, cy, 0, cx, cy, rx); sg.addColorStop(0, col); sg.addColorStop(1, col.replace(/[\d.]+\)$/, "0)")); g.fillStyle = sg; g.beginPath(); g.ellipse(cx, cy, rx, ry, 0, 0, TAU); g.fill(); };
-    shade(-R * 0.42, R * 0.18, R * 0.24, R * 0.18, "rgba(226,104,60,0.45)"); shade(R * 0.42, R * 0.18, R * 0.24, R * 0.18, "rgba(226,104,60,0.45)"); // rosy cheeks
-    shade(R * 0.14, -R * 0.02, R * 0.1, R * 0.28, "rgba(150,80,20,0.35)"); // shadow beside the nose
-    shade(-R * 0.3, -R * 0.12, R * 0.22, R * 0.11, "rgba(150,84,22,0.3)"); shade(R * 0.3, -R * 0.12, R * 0.22, R * 0.11, "rgba(150,84,22,0.3)"); // eye sockets
-    g.restore();
-    const ink = "rgb(110,56,20)"; g.strokeStyle = ink; g.lineCap = "round";
-    // brows
-    for (const s of [-1, 1]) { g.lineWidth = R * 0.035; g.beginPath(); g.moveTo(s * R * 0.08, -R * 0.27); g.quadraticCurveTo(s * R * 0.3, -R * 0.4, s * R * 0.52, -R * 0.25); g.stroke(); }
-    // long straight nose with a curl at each nostril
-    g.lineWidth = R * 0.025; g.beginPath(); g.moveTo(R * 0.06, -R * 0.24); g.quadraticCurveTo(R * 0.1, -R * 0.02, R * 0.08, R * 0.16); g.quadraticCurveTo(R * 0.02, R * 0.21, -R * 0.06, R * 0.17); g.stroke();
-    g.beginPath(); g.arc(-R * 0.1, R * 0.15, R * 0.04, 0.5, 3.6); g.stroke();
-    // lips
-    g.beginPath(); g.moveTo(-R * 0.2, R * 0.36); g.quadraticCurveTo(-R * 0.08, R * 0.3, 0, R * 0.34); g.quadraticCurveTo(R * 0.08, R * 0.3, R * 0.2, R * 0.36); g.quadraticCurveTo(R * 0.1, R * 0.47, 0, R * 0.47); g.quadraticCurveTo(-R * 0.1, R * 0.47, -R * 0.2, R * 0.36);
-    const lg = g.createLinearGradient(0, R * 0.3, 0, R * 0.47); lg.addColorStop(0, "rgb(170,62,40)"); lg.addColorStop(1, "rgb(214,104,66)"); g.fillStyle = lg; g.fill();
-    g.lineWidth = R * 0.015; g.beginPath(); g.moveTo(-R * 0.2, R * 0.36); g.quadraticCurveTo(0, R * 0.4, R * 0.2, R * 0.36); g.stroke();
-    g.beginPath(); g.arc(0, R * 0.45, R * 0.28, 1.15, 2.0); g.stroke(); // chin
-    // engraved rim: fine hatching around the edge, as on gold leaf
-    g.lineWidth = Math.max(0.6, R * 0.008);
-    for (let i = 0; i < 160; i++) { const a = i / 160 * TAU; g.strokeStyle = i % 2 ? "rgba(120,64,14,0.55)" : "rgba(255,236,170,0.6)"; g.beginPath(); g.moveTo(Math.cos(a) * R * 0.88, Math.sin(a) * R * 0.88); g.lineTo(Math.cos(a) * R * 0.99, Math.sin(a) * R * 0.99); g.stroke(); }
-    g.beginPath(); g.arc(0, 0, R * 0.995, 0, TAU); g.strokeStyle = "rgb(120,62,16)"; g.lineWidth = R * 0.02; g.stroke();
-  });
-}
-// A sunflower head, painted once: two rings of petals around a dark seed disc.
-function paintSunflower(s) {
-  return offscreen(s, s, () => {
-    const r = seeded(23); g.translate(s / 2, s / 2);
-    for (const [n, len, off, col] of [[16, 0.48, 0, [214, 150, 26]], [16, 0.42, 0.2, [248, 196, 40]]]) {
-      for (let i = 0; i < n; i++) {
-        const a = i / n * TAU + off; g.save(); g.rotate(a);
-        g.beginPath(); g.moveTo(s * 0.14, 0); g.quadraticCurveTo(s * 0.3, -s * 0.06, s * len, 0); g.quadraticCurveTo(s * 0.3, s * 0.06, s * 0.14, 0);
-        const pg = g.createLinearGradient(s * 0.14, 0, s * len, 0); pg.addColorStop(0, `rgb(${mixc(col, [120, 70, 10], 0.4)})`); pg.addColorStop(1, `rgb(${col})`); g.fillStyle = pg; g.fill();
-        g.restore();
-      }
-    }
-    g.beginPath(); g.arc(0, 0, s * 0.17, 0, TAU); roundShade(0, 0, s * 0.17, [130, 84, 40], [84, 50, 24], [44, 26, 14]);
-    for (let i = 0; i < 70; i++) { const a = i * 2.4, d = Math.sqrt(i / 70) * s * 0.15; g.beginPath(); g.arc(Math.cos(a) * d, Math.sin(a) * d, s * 0.008, 0, TAU); g.fillStyle = r() < 0.5 ? "rgb(150,100,40)" : "rgb(30,18,10)"; g.fill(); }
-  });
-}
-function sunScene(t, dt, box) {
-  const h = box.h, w = Math.min(box.w, h * 0.6), x0 = box.x + (box.w - w) / 2, y0 = box.y;
-  const b = w * 0.07, px = b, py = b * 1.9, pw = w - b * 2, ph = h - b * 3.2, wallY = py + ph * 0.8; // the picture inside the card's border
-  const key = Math.round(w) + "x" + Math.round(h) + "@" + DPR;
-  if (sun.key !== key) {
-    sun.key = key;
-    sun.sky = offscreen(pw, ph, (fw, fh) => { // deep lapis at the top fading to a pale morning blue, with small gold stars
-      const r = seeded(31), gr = g.createLinearGradient(0, 0, 0, fh);
-      gr.addColorStop(0, "rgb(30,52,120)"); gr.addColorStop(0.55, "rgb(84,124,186)"); gr.addColorStop(0.85, "rgb(196,212,220)"); g.fillStyle = gr; g.fillRect(0, 0, fw, fh);
-      for (let i = 0; i < fw * fh / 30; i++) { const x = r() * fw, y = r() * fh, k = y / fh; brush(x, y, 2 + r() * 4, 1 + r(), (r() - 0.5) * 0.5, paint(k < 0.55 ? mixc([30, 52, 120], [84, 124, 186], k / 0.55) : mixc([84, 124, 186], [210, 220, 222], (k - 0.55) / 0.45), 18, r)); }
-      for (let i = 0; i < 40; i++) { const x = r() * fw, y = r() * fh * 0.45, s = 1.5 + r() * 2; g.fillStyle = "rgb(232,192,92)"; for (let p = 0; p < 4; p++) { g.beginPath(); g.ellipse(x + Math.cos(p * Math.PI / 2) * s, y + Math.sin(p * Math.PI / 2) * s, s, s * 0.5, p * Math.PI / 2, 0, TAU); g.fill(); } }
-    });
-    sun.wall = offscreen(pw, ph, (fw, fh) => { // a grey stone garden wall, and green grass at its foot
-      const r = seeded(44), top = fh * 0.8, rows = 5, rh = (fh * 0.17) / rows;
-      g.fillStyle = "rgb(150,146,136)"; g.fillRect(0, top, fw, fh * 0.17);
-      for (let row = 0; row < rows; row++) for (let x = -(row % 2) * rh; x < fw; x += rh * 2.1) {
-        const sx = x + 1, sy = top + row * rh + 1, sw = rh * 2.1 - 2, sh = rh - 2;
-        const sg = g.createLinearGradient(sx, sy, sx, sy + sh); const tone = 0.85 + r() * 0.3; sg.addColorStop(0, `rgb(${mixc([206, 200, 186], [0, 0, 0], 1 - tone)})`); sg.addColorStop(1, `rgb(${mixc([150, 144, 134], [0, 0, 0], 1 - tone)})`); g.fillStyle = sg; g.fillRect(sx, sy, sw, sh);
-        for (let k = 0; k < 6; k++) brush(sx + r() * sw, sy + r() * sh, rh * 0.25, rh * 0.06, (r() - 0.5) * 0.4, `rgba(${r() < 0.5 ? '230,226,214' : '110,106,98'},0.5)`);
-      }
-      g.fillStyle = "rgb(120,116,108)"; g.fillRect(0, top - rh * 0.5, fw, rh * 0.5); g.fillStyle = "rgb(214,208,194)"; g.fillRect(0, top - rh * 0.5, fw, rh * 0.18); // coping stones
-      g.fillStyle = "rgb(84,120,58)"; g.fillRect(0, fh * 0.97, fw, fh * 0.03);
-      for (let i = 0; i < fw; i += 2) brush(i, fh * 0.97 + r() * 3, 4, 1, -1.2 + r() * 0.4, paint([96, 136, 64], 30, r));
-    });
-    sun.frame = offscreen(w, h, (fw, fh) => { // the card: worn vellum, a red rule and a gold rule, a numeral at the top
-      const r = seeded(50);
-      g.beginPath(); g.rect(0, 0, fw, fh); g.rect(px, py, pw, ph);
-      g.fillStyle = "rgb(232,218,186)"; g.fill("evenodd");
-      g.save(); g.beginPath(); g.rect(0, 0, fw, fh); g.rect(px, py, pw, ph); g.clip("evenodd");
-      for (let i = 0; i < fw * fh / 25; i++) brush(r() * fw, r() * fh, 3 + r() * 6, 1 + r() * 1.5, (r() - 0.5) * 0.6, paint([228, 212, 176], 22, r));
-      g.restore();
-      g.strokeStyle = "rgb(150,40,34)"; g.lineWidth = b * 0.12; g.strokeRect(px - b * 0.25, py - b * 0.25, pw + b * 0.5, ph + b * 0.5);
-      g.strokeStyle = "rgb(198,150,58)"; g.lineWidth = b * 0.1; g.strokeRect(px - b * 0.06, py - b * 0.06, pw + b * 0.12, ph + b * 0.12);
-      g.strokeStyle = "rgb(60,40,30)"; g.lineWidth = 1; g.strokeRect(b * 0.35, b * 0.35, fw - b * 0.7, fh - b * 0.7);
-      g.fillStyle = "rgb(70,44,30)"; g.font = `600 ${Math.round(b * 0.85)}px Georgia, "Times New Roman", serif`; g.textAlign = "center"; g.textBaseline = "middle";
-      g.fillText("XIX", fw / 2, py * 0.55);
-      for (const s of [-1, 1]) { g.beginPath(); g.arc(fw / 2 + s * b * 1.6, py * 0.55, b * 0.12, 0, TAU); g.fillStyle = "rgb(150,40,34)"; g.fill(); }
-      // a little gold sun-and-leaf ornament at the foot of the card
-      const fy = py + ph + (fh - py - ph) / 2;
-      g.beginPath(); g.arc(fw / 2, fy, b * 0.28, 0, TAU); roundShade(fw / 2, fy, b * 0.28, [255, 232, 150], [214, 160, 50], [150, 96, 24]);
-      for (const s of [-1, 1]) { g.save(); g.translate(fw / 2 + s * b * 0.9, fy); g.rotate(Math.PI / 2); leaf(b * 0.45, b * 0.18); g.fillStyle = "rgb(96,120,64)"; g.fill(); g.restore(); }
-    });
-    sun.R = Math.round(pw * 0.2);
-    sun.face = paintSunFace(sun.R);
-    sun.flower = paintSunflower(Math.round(pw * 0.2));
-  }
-  // the sun's height follows the pitch: low notes just over the wall, high notes near the top
-  const goal = S.pitchOn ? Math.max(0, Math.min(1, (S.pitch - 0.8) / 2.6)) : 0.25;
-  sun.y += (goal - sun.y) * Math.min(1, dt * 2.5);
-  sun.spin += dt * (0.05 + S.mid * 0.3);
-  sun.smile += ((S.pitchOn ? sun.y : 0) - sun.smile) * Math.min(1, dt * 2);
-  const ox = x0 + px, oy = y0 + py, R = sun.R * (1 + S.bass * 0.04), cx = ox + pw / 2, cy = oy + ph * (0.52 - sun.y * 0.3);
-  g.save(); g.beginPath(); g.rect(ox, oy, pw, ph); g.clip();
-  blit(sun.sky, ox, oy);
-  // rays: straight gold spikes and wavy flames in turn, as on the old cards
-  g.save(); g.translate(cx, cy);
-  for (let k = 0; k < 32; k++) {
-    const a = sun.spin + k * TAU / 32, e = S.spec[k % 16], straight = k % 2 === 0;
-    const len = R * (straight ? 0.85 : 0.6) * (1 + e * 0.5), wd = R * (straight ? 0.09 : 0.11);
-    g.save(); g.rotate(a); g.beginPath();
-    if (straight) { g.moveTo(R * 0.9, -wd); g.lineTo(R + len, 0); g.lineTo(R * 0.9, wd); }
-    else {
-      g.moveTo(R * 0.9, -wd);
-      for (let i = 1; i <= 6; i++) { const p = i / 6; g.lineTo(R * 0.9 + len * p, Math.sin(p * 8 - t * 4 + k) * wd * 0.8 * p - wd * (1 - p * 0.85)); }
-      for (let i = 6; i >= 0; i--) { const p = i / 6; g.lineTo(R * 0.9 + len * p, Math.sin(p * 8 - t * 4 + k) * wd * 0.8 * p + wd * (1 - p * 0.85)); }
-    }
-    g.closePath();
-    const rg = g.createLinearGradient(R, 0, R + len, 0); rg.addColorStop(0, "rgb(236,170,46)"); rg.addColorStop(1, straight ? "rgb(255,232,140)" : "rgb(250,206,90)");
-    g.fillStyle = rg; g.fill(); g.strokeStyle = "rgba(140,80,20,0.7)"; g.lineWidth = 0.8; g.stroke();
-    g.restore();
-  }
-  g.drawImage(sun.face, -sun.R, -sun.R, sun.R * 2, sun.R * 2);
-  // eyes: closed and calm low down, opening as the sun reaches the top
-  const open = Math.max(0.05, Math.min(1, sun.smile * 1.4));
-  for (const s of [-1, 1]) {
-    const ex = s * sun.R * 0.3, ey = -sun.R * 0.1, ew = sun.R * 0.16, eh = sun.R * 0.075 * open;
-    g.beginPath(); g.moveTo(ex - ew, ey); g.quadraticCurveTo(ex, ey - eh * 2, ex + ew, ey); g.quadraticCurveTo(ex, ey + eh * 1.2, ex - ew, ey);
-    g.fillStyle = "rgb(250,240,214)"; g.fill();
-    g.save(); g.clip(); g.beginPath(); g.arc(ex + Math.sin(t * 0.5) * ew * 0.2, ey - eh * 0.2, sun.R * 0.06, 0, TAU); g.fillStyle = "rgb(70,44,24)"; g.fill(); g.restore();
-    g.strokeStyle = "rgb(110,56,20)"; g.lineWidth = sun.R * 0.022; g.beginPath(); g.moveTo(ex - ew, ey); g.quadraticCurveTo(ex, ey - eh * 2 - sun.R * 0.01, ex + ew, ey); g.stroke(); // upper lid
-    g.lineWidth = sun.R * 0.01; g.beginPath(); g.moveTo(ex - ew * 0.8, ey + eh * 0.5 + sun.R * 0.02); g.quadraticCurveTo(ex, ey + eh * 1.4 + sun.R * 0.03, ex + ew * 0.8, ey + eh * 0.5 + sun.R * 0.02); g.stroke();
-  }
-  g.restore();
-  // drops of gold light falling from the sun on the beat
-  sun.yods = sun.yods.filter(d => d.y < oy + ph * 0.8);
-  sun.yods.forEach(d => {
-    d.y += d.v * dt; d.x += Math.sin(t * 2 + d.p) * 6 * dt;
-    g.save(); g.translate(d.x, d.y); g.rotate(Math.sin(t * 2 + d.p) * 0.2); g.beginPath(); g.moveTo(0, -d.s * 1.8); g.quadraticCurveTo(d.s, 0, 0, d.s); g.quadraticCurveTo(-d.s, 0, 0, -d.s * 1.8);
-    roundShade(0, 0, d.s, [255, 236, 160], [232, 176, 54], [170, 110, 24]); g.restore();
-  });
-  sun.yodFrom = [cx, cy + R, pw];
-  // sunflowers over the wall turn their faces towards the sun, and nod to the music
-  [[0.1, 0.63], [0.27, 0.71], [0.5, 0.75], [0.73, 0.7], [0.9, 0.62]].forEach(([fx, fh], k) => {
-    const bx = ox + fx * pw, by = oy + wallY - py + ph * 0.06, nod = Math.sin(t * 1.4 + k) * 0.05 + S.spec[k * 3] * 0.12;
-    const hx = bx + (cx - bx) * 0.08 + Math.sin(t * 1.2 + k) * 2, hy = oy + ph * fh + nod * 20;
-    g.strokeStyle = "rgb(80,112,52)"; g.lineWidth = pw * 0.012; g.beginPath(); g.moveTo(bx, by); g.quadraticCurveTo(bx, (by + hy) / 2, hx, hy); g.stroke();
-    g.save(); g.translate((bx + hx) / 2, (by + hy) / 2 + 6); g.rotate(-0.6 * (k % 2 ? 1 : -1)); leaf(pw * 0.06, pw * 0.025); g.fillStyle = "rgb(86,122,56)"; g.fill(); g.restore();
-    const turn = Math.max(-0.5, Math.min(0.5, (cx - hx) / pw)), s = sun.flower.w * (0.75 + (k % 2) * 0.1);
-    g.save(); g.translate(hx, hy); g.rotate(turn * 0.6 + nod); g.scale(1 - Math.abs(turn) * 0.5, 0.92); g.drawImage(sun.flower, -s / 2, -s / 2, s, s); g.restore();
-  });
-  blit(sun.wall, ox, oy);
-  g.restore();
-  blit(sun.frame, x0, y0);
-}
-function sunBeat() {
-  if (!sun.yodFrom) return;
-  const [cx, cy, pw] = sun.yodFrom;
-  for (let k = 0; k < 2; k++) sun.yods.push({ x: cx + (Math.random() - 0.5) * pw * 0.6, y: cy, v: 30 + Math.random() * 30, s: 3 + Math.random() * 3, p: Math.random() * 6 });
-}
+// --- Room 3, piece i (the Sun card) and piece ii (the Baroque heaven) live in room3.js ---
 
 // --- Oil-paint toolkit: pictures are painted once, stroke by stroke, onto hidden canvases and then reused ---
 function offscreen(w, h, paint) {
@@ -1732,135 +1237,6 @@ function paintLeaf(x, y, len, ang, seed) {
   g.fillStyle = grad; g.fill();
   g.strokeStyle = "rgba(150,170,110,0.6)"; g.lineWidth = 1; g.beginPath(); g.moveTo(0, -len); g.lineTo(0, len * 0.3); g.stroke();
   g.restore(); r();
-}
-
-// --- Room 3, piece ii: a painted ceiling — two cherubs drift through the clouds and meet for a kiss ---
-const heaven = { key: "", sky: null, clouds: [], cherub: null, garland: null, frame: null, petals: [], lastNote: 0, meet: 0 };
-const SKIN = { light: [252, 228, 212], mid: [236, 186, 160], dark: [176, 112, 98] };
-// A cherub's body, flying to the right, painted once (the wings are added live so they can beat).
-function paintCherub(s) {
-  return offscreen(s, s, () => {
-    const r = seeded(77);
-    g.translate(s / 2, s / 2); g.scale(s, s);
-    const part = (pathFn, cx, cy, rad) => { pathFn(); roundShade(cx, cy, rad, SKIN.light, SKIN.mid, SKIN.dark); };
-    // drapery: a rose-coloured cloth trailing from the waist
-    g.beginPath(); g.moveTo(-0.05, 0.05); g.bezierCurveTo(-0.3, 0.0, -0.45, -0.12, -0.62, -0.02); g.bezierCurveTo(-0.5, 0.06, -0.38, 0.14, -0.08, 0.16); g.closePath();
-    const dg = g.createLinearGradient(-0.6, -0.1, -0.05, 0.15); dg.addColorStop(0, "rgb(150,40,50)"); dg.addColorStop(1, "rgb(222,110,110)"); g.fillStyle = dg; g.fill();
-    // far leg and arm, a little darker
-    const lb = (a, b, c, w0, w1, w2) => { limb(a, b, c, w0, w1, w2); };
-    lb([-0.1, 0.12], [-0.3, 0.3], [-0.46, 0.34], 0.17, 0.12, 0.08); roundShade(-0.3, 0.28, 0.2, SKIN.mid, SKIN.dark, [150, 92, 82]);
-    lb([0.04, -0.14], [0.2, -0.3], [0.32, -0.38], 0.12, 0.09, 0.07); roundShade(0.2, -0.3, 0.15, SKIN.mid, SKIN.dark, [150, 92, 82]);
-    // torso
-    part(() => { g.beginPath(); g.ellipse(0, 0, 0.17, 0.25, -0.9, 0, TAU); }, 0, 0, 0.25);
-    // near leg: chubby thigh, bent knee, little foot
-    part(() => lb([-0.08, 0.1], [-0.3, 0.16], [-0.48, 0.08], 0.19, 0.14, 0.09), -0.25, 0.12, 0.2);
-    // near arm reaching forward
-    part(() => lb([0.1, -0.08], [0.28, -0.02], [0.42, -0.12], 0.13, 0.1, 0.075), 0.25, -0.05, 0.16);
-    // head
-    part(() => { g.beginPath(); g.arc(0.2, -0.26, 0.15, 0, TAU); }, 0.2, -0.26, 0.15);
-    g.beginPath(); g.ellipse(0.27, -0.21, 0.04, 0.025, 0, 0, TAU); g.fillStyle = "rgba(225,110,110,0.55)"; g.fill(); // rosy cheek
-    g.strokeStyle = "rgb(120,70,60)"; g.lineWidth = 0.008;
-    g.beginPath(); g.arc(0.26, -0.27, 0.025, 0.2, Math.PI - 0.2); g.stroke(); // closed eye
-    g.beginPath(); g.arc(0.33, -0.2, 0.012, 0, TAU); g.fillStyle = "rgb(200,90,90)"; g.fill(); // lips
-    // golden-brown curls
-    for (let i = 0; i < 26; i++) {
-      const a = -2.9 + r() * 2.6, d = 0.1 + r() * 0.06, x = 0.2 + Math.cos(a) * d, y = -0.26 + Math.sin(a) * d;
-      g.beginPath(); g.arc(x, y, 0.03 + r() * 0.015, 0, TAU); roundShade(x, y, 0.04, [222, 168, 102], [176, 112, 60], [110, 62, 34]);
-    }
-    // oil texture over the skin
-    for (let i = 0; i < 260; i++) {
-      const x = -0.5 + r(), y = -0.45 + r() * 0.9;
-      g.globalAlpha = 0.18; brush(x, y, 0.025, 0.006, -0.8 + (r() - 0.5), paint(mixc(SKIN.light, SKIN.mid, r()), 20, r));
-    }
-    g.globalAlpha = 1;
-  });
-}
-// A wing: a fan of feathers, lighter at the top edge; flap turns the whole fan.
-function wing(x, y, s, flap, far) {
-  g.save(); g.translate(x, y); g.rotate(-0.5 + flap);
-  const base = far ? [196, 196, 204] : [246, 242, 236], shade = far ? [140, 140, 155] : [200, 196, 200];
-  for (let i = 0; i < 11; i++) {
-    const a = -2.5 + i * 0.13, len = s * (0.3 + Math.sin((i / 10) * Math.PI) * 0.22 + i * 0.012);
-    g.save(); g.rotate(a);
-    g.beginPath(); g.ellipse(len / 2, 0, len / 2, s * 0.045, 0, 0, TAU);
-    const gr = g.createLinearGradient(0, 0, len, 0); gr.addColorStop(0, `rgb(${shade})`); gr.addColorStop(1, `rgb(${base})`);
-    g.fillStyle = gr; g.fill(); g.strokeStyle = `rgba(${shade},0.6)`; g.lineWidth = 0.6; g.stroke();
-    g.restore();
-  }
-    g.restore();
-}
-function drawCherub(x, y, s, dir, flap, tilt) {
-  const c = heaven.cherub;
-  g.save(); g.translate(x, y); g.scale(dir, 1); g.rotate(tilt);
-  wing(-s * 0.02, -s * 0.15, s, flap + 0.25, true);
-  g.drawImage(c, -s / 2, -s / 2, s, s);
-  wing(-s * 0.06, -s * 0.12, s, flap, false);
-  g.restore();
-}
-function heavenScene(t, dt, box) {
-  const h = box.h, w = Math.min(box.w, h * 0.66), x0 = box.x + (box.w - w) / 2, y0 = box.y;
-  const key = Math.round(w) + "x" + Math.round(h) + "@" + DPR;
-  if (heaven.key !== key) { // paint the still parts once for this size
-    heaven.key = key;
-    heaven.sky = paintSky(w, h, 5, [104, 154, 204], [180, 208, 226], [240, 216, 196]);
-    heaven.clouds = [0, 1, 2, 3, 4].map(i => ({ c: paintCloud(w * (0.5 + (i % 3) * 0.12), w * (0.3 + (i % 2) * 0.08), 40 + i, i % 2 === 0), x: [-0.1, 0.45, 0.1, 0.55, 0.25][i], y: [0.08, 0.2, 0.45, 0.6, 0.75][i], v: 0.006 + i * 0.002 }));
-    heaven.cherub = paintCherub(Math.round(h * 0.2));
-    heaven.garland = offscreen(w, h * 0.3, (gw, gh) => { // roses, peonies, leaves and strings of pearls along the bottom
-      const r = seeded(9);
-      for (let i = 0; i < 14; i++) paintLeaf(r() * gw, gh * (0.45 + r() * 0.5), gh * 0.22, (r() - 0.5) * 2.5, i);
-      [[0.1, 0.75, 0.2, [214, 120, 130], [250, 214, 214]], [0.32, 0.85, 0.17, [244, 226, 196], [255, 250, 236]], [0.55, 0.8, 0.22, [236, 206, 140], [255, 244, 210]], [0.8, 0.78, 0.19, [176, 50, 70], [236, 140, 150]], [0.95, 0.92, 0.15, [244, 226, 196], [255, 250, 236]]]
-        .forEach(([px, py, pr, b, tp], k) => paintBloom(px * gw, py * gh, pr * gh, b, tp, 60 + k));
-      for (let s2 = 0; s2 < 2; s2++) for (let i = 0; i < 40; i++) { const p = i / 39, x = p * gw, y = gh * (0.55 + s2 * 0.15) + Math.sin(p * Math.PI * (2 + s2)) * gh * 0.12; pearl(x, y, gh * 0.025); }
-    });
-    heaven.frame = offscreen(w, h, (fw, fh) => { // a gilded frame with an arched top
-      const b = fw * 0.045;
-      g.beginPath(); g.rect(0, 0, fw, fh);
-      g.moveTo(b, fh - b); g.lineTo(fw - b, fh - b); g.lineTo(fw - b, b + fw * 0.25);
-      g.bezierCurveTo(fw - b, b, b, b, b, b + fw * 0.25); g.closePath();
-      const gold = g.createLinearGradient(0, 0, fw, fh);
-      gold.addColorStop(0, "rgb(236,204,130)"); gold.addColorStop(0.3, "rgb(170,128,58)"); gold.addColorStop(0.55, "rgb(240,214,150)"); gold.addColorStop(0.8, "rgb(150,108,48)"); gold.addColorStop(1, "rgb(222,186,112)");
-      g.fillStyle = gold; g.fill("evenodd");
-      g.strokeStyle = "rgba(90,60,20,0.6)"; g.lineWidth = 1.5;
-      g.beginPath(); g.moveTo(b, fh - b); g.lineTo(fw - b, fh - b); g.lineTo(fw - b, b + fw * 0.25); g.bezierCurveTo(fw - b, b, b, b, b, b + fw * 0.25); g.closePath(); g.stroke();
-    });
-  }
-  g.save(); g.beginPath(); g.rect(x0, y0, w, h); g.clip();
-  blit(heaven.sky, x0, y0);
-  // clouds drift across, slowly, faster when the music is busy
-  heaven.clouds.forEach(cl => {
-    cl.x += dt * cl.v * (0.6 + S.mid * 1.5);
-    if (cl.x > 1.05) cl.x = -0.1 - cl.c.w / w;
-    blit(cl.c, Math.round(x0 + cl.x * w), Math.round(y0 + cl.y * h + Math.sin(t * 0.3 + cl.v * 100) * 4));
-  });
-  // light breaking through on loud moments: a few crisp, pale rays from the top
-  g.fillStyle = `rgba(255,246,220,${0.06 + S.bass * 0.12})`;
-  for (let k = 0; k < 4; k++) { const a = -0.25 + k * 0.17 + Math.sin(t * 0.2) * 0.03; g.beginPath(); g.moveTo(x0 + w * 0.5, y0 - h * 0.1); g.lineTo(x0 + w * 0.5 + Math.tan(a) * h, y0 + h); g.lineTo(x0 + w * 0.5 + Math.tan(a + 0.06) * h, y0 + h); g.closePath(); g.fill(); }
-  // the two cherubs: they hover, drift apart, then glide together for a kiss at the end of each phrase
-  heaven.meet += dt / 13.3;
-  const ph = heaven.meet % 1, close = Math.pow(Math.max(0, Math.sin(ph * Math.PI)), 3);
-  const s = heaven.cherub.w, gap = s * (0.95 - close * 0.62), cy = y0 + h * 0.42;
-  const flap = Math.sin(t * (7 + S.mid * 6)) * 0.35;
-  drawCherub(x0 + w / 2 - gap / 2 - s * 0.1, cy + Math.sin(t * 1.6) * s * 0.08 + close * s * 0.04, s, 1, flap, 0.15 + close * 0.1);
-  drawCherub(x0 + w / 2 + gap / 2 + s * 0.1, cy + Math.sin(t * 1.6 + 1.3) * s * 0.08 + close * s * 0.04, s, -1, Math.sin(t * (7 + S.mid * 6) + 1) * 0.35, 0.15 + close * 0.1);
-  // a little one far off, crossing the sky now and then
-  const far = (t * 0.04) % 1.6 - 0.3;
-  if (far > -0.2 && far < 1.2) drawCherub(x0 + far * w, y0 + h * 0.17 + Math.sin(t) * 6, s * 0.45, 1, Math.sin(t * 9) * 0.4, -0.1);
-  // every note of the harpsichord lets a rose petal (or sometimes a pearl) fall
-  const now = ctx ? ctx.currentTime : 0;
-  while (NOTES.length && NOTES[0].t + 2 < now) NOTES.shift();
-  NOTES.forEach(n => { if (n.t <= now && n.t > heaven.lastNote) { heaven.lastNote = n.t; if (heaven.petals.length < 90) heaven.petals.push({ x: x0 + Math.random() * w, y: y0 - 10, vx: (Math.random() - 0.5) * 20, vy: 25 + Math.random() * 25, a: Math.random() * TAU, spin: (Math.random() - 0.5) * 4, pearl: Math.random() < 0.15, col: pick([[214, 96, 112], [240, 170, 176], [250, 222, 214], [190, 50, 70]]) }); } });
-  heaven.petals = heaven.petals.filter(p => p.y < y0 + h + 20);
-  heaven.petals.forEach(p => {
-    p.x += (p.vx + Math.sin(t * 2 + p.a) * 18) * dt; p.y += p.vy * dt; p.a += p.spin * dt;
-    if (p.pearl) { pearl(p.x, p.y, 4); return; }
-    g.save(); g.translate(p.x, p.y); g.rotate(p.a); g.scale(1, Math.abs(Math.cos(t * 2 + p.a)) * 0.7 + 0.3);
-    g.beginPath(); g.moveTo(0, -7); g.bezierCurveTo(7, -6, 6, 5, 0, 7); g.bezierCurveTo(-6, 5, -7, -6, 0, -7);
-    const pg = g.createLinearGradient(0, -7, 0, 7); pg.addColorStop(0, `rgb(${p.col})`); pg.addColorStop(1, `rgb(${mixc(p.col, [255, 255, 255], 0.4)})`); g.fillStyle = pg; g.fill();
-    g.restore();
-  });
-  blit(heaven.garland, x0, y0 + h * 0.72);
-  blit(heaven.frame, x0, y0);
-  g.restore();
 }
 
 // --- Room 3, piece iii: after Monet — a lily pond in broken dabs of colour; the music sends ripples across it ---
@@ -3441,11 +2817,11 @@ const ARTS = {
   medallion: { draw: medallion, segments: 8, drift: 0.09, zoom: 0.36 },
   arch: { scene: archScene },
   loom: { scene: loomScene },
-  moon: { scene: moonScene },
+  moon: { scene: moonScene, real: "fresco" },
   manton: { scene: mantonScene },
-  feria: { scene: feriaScene, real: "archi" },
+  feria: { scene: feriaScene },
   sun: { scene: sunScene },
-  heaven: { scene: heavenScene, paint: "baroque" },
+  heaven: { scene: heavenScene },
   lilies: { scene: liliesScene, paint: "monet" },
   guitarist: { scene: guitaristScene, paint: "blue" },
   scream: { scene: screamScene, paint: "munch" },

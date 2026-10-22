@@ -16,7 +16,7 @@ const PAINT = { gl: null };
 // ground: 0 canvas, 1 cardboard, 2 gessoed panel, 3 fresco plaster, 4 silk; gap: how much ground shows between strokes
 const PAINT_STYLES = {
   // Monet, water lilies: short loaded dabs side by side, broken colour, thick paint, a little canvas showing
-  monet:   { size: [24, 14, 7],  len: 1.6, wid: 0.62, jit: 0.24, hue: 0.12, keep: 0.08, imp: 1.0, bristle: 0.45, curve: 0.15, detail: 1.4, ground: 0, gap: 0.18, gloss: 0.22, cracks: 0,   varnish: 0.04, dir: 0.0, spread: 0.35 },
+  monet:   { size: [18, 11, 6],  len: 1.7, wid: 0.62, jit: 0.08, hue: 0.03, keep: 0.42, imp: 0.3, bristle: 0.18, curve: 0.15, detail: 1.4, ground: 0, gap: 0.05, gloss: 0.1, cracks: 0,   varnish: 0.03, dir: 0.0, spread: 0.35, sat: 0.7, weave: 0.3, noise: 0 },
   // Picasso, The Old Guitarist (Blue Period): thin oil laid in long fluid strokes that follow the body, scumbled,
   // the canvas weave and earlier painting showing through
   blue:    { size: [22, 12, 6],  len: 3.4, wid: 0.45, jit: 0.04, hue: 0.01, keep: 0.62, imp: 0.12, bristle: 0.45, curve: 0.35, detail: 1.1, ground: 0, gap: 0.04, gloss: 0.10, cracks: 0,   varnish: 0.03, dir: 1.5708, spread: 0.6 },
@@ -119,7 +119,7 @@ void main(){
 // 3. the light on the paint and the ground beneath it
 const PAINT_FINISH = PAINT_COMMON + `
 uniform sampler2D uCol, uH, uSrc; uniform vec4 uBox; uniform vec2 uRes;
-uniform float uT, uImp, uGap, uGloss, uCracks, uVarnish, uGround, uLx, uLy, uScale;
+uniform float uT, uImp, uGap, uGloss, uCracks, uVarnish, uGround, uLx, uLy, uScale, uSat, uWeave, uNoise;
 in vec2 vUv; out vec4 o;
 float H(vec2 px){ return texture(uH, px / uRes).r; }
 // crackle: the edges of an uneven cell pattern
@@ -149,7 +149,7 @@ void main(){
   vec3 under = texture(uSrc, uBox.xy + vUv * uBox.zw).rgb;
   vec3 col = c.a > .5 ? c.rgb : mix(under, gcol, uGap * .6);
   float thin = c.a > .5 ? 0. : 1.;
-  col = mix(col, col * (.85 + .25 * gh), .15 + .5 * thin);                    // the ground's texture shows through thin paint
+  col = mix(col, col * (.85 + .25 * gh), (.15 + .5 * thin) * uWeave);                    // the ground's texture shows through thin paint
   // light raking across the thickness of the paint
   float e = 1.;
   float hx = H(px + vec2(e, 0)) - H(px - vec2(e, 0)), hy = H(px + vec2(0, e)) - H(px - vec2(0, e));
@@ -160,12 +160,13 @@ void main(){
   vec3 hv = normalize(Ld + vec3(0, 0, 1));
   col += vec3(1.) * pow(max(dot(nrm, hv), 0.), 40.) * uGloss * smoothstep(.05, .4, abs(hx) + abs(hy)) ;
   // the weave pressing up through the paint
-  col *= 1. - (1. - gh) * .07 * (uGround < .5 ? 1. : .5);
+  col *= 1. - (1. - gh) * .07 * (uGround < .5 ? 1. : .5) * uWeave;
   if (uGround > 3.5) col += vec3(.9, .85, .7) * step(.985, h12(floor(q * 2.))) * .12;   // mineral sparkle
   // age: crackle and varnish
   if (uCracks > 0.) { float k = crackle(q * .11 + fb(q * .02) * 1.2) * uCracks * smoothstep(.35, .6, fb(q * .006)); col *= 1. - k * .16; }
   col = mix(col, col * vec3(1.05, .92, .70), uVarnish);
-  col += (h12(px + fract(uT) * 31.) - .5) * .025;
+  col += (h12(px + fract(uT) * 31.) - .5) * uNoise;
+  col = mix(vec3(dot(col, vec3(.3, .59, .11))), col, uSat);
   o = vec4(col * a, a);
 }`;
 
@@ -217,7 +218,7 @@ function paintApply(styleName, box, t, dt) {
   if (!PAINT.gl) return;
   const st = PAINT_STYLES[styleName]; if (!st) return;
   const { gl } = PAINT, cnv = screen.canvas;
-  const k = Math.min(DPR, 1.5), w = Math.max(16, Math.round(box.w * k)), h = Math.max(16, Math.round(box.h * k));
+  const k = Math.min(DPR, Math.sqrt(5e6 / (box.w * box.h))), w = Math.max(16, Math.round(box.w * k)), h = Math.max(16, Math.round(box.h * k)); // full Retina resolution
   paintResize(w, h);
   // the music: strokes are re-laid a little faster and lean a touch more when it swells
   const energy = Math.min(1, S.mid * 0.8 + S.bass * 0.5);
@@ -246,148 +247,11 @@ function paintApply(styleName, box, t, dt) {
   gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.viewport(0, 0, w, h);
   gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT);
   const lx = -0.55 + Math.sin(t * 0.21) * 0.08 + S.bass * 0.06, ly = 0.6;
-  paintUse(PAINT.finish, { uBox: B, uRes: [w, h], uT: t, uImp: st.imp, uGap: st.gap, uGloss: st.gloss, uCracks: st.cracks, uVarnish: st.varnish,
+  paintUse(PAINT.finish, { uBox: B, uRes: [w, h], uT: t, uImp: st.imp, uGap: st.gap, uGloss: st.gloss, uCracks: st.cracks, uVarnish: st.varnish, uSat: st.sat || 1, uWeave: st.weave == null ? 1 : st.weave, uNoise: st.noise == null ? 0.025 : st.noise,
     uGround: st.ground, uLx: lx, uLy: ly, uScale: k });
   paintBind(PAINT.finish, "uCol", 0, PAINT.tCol); paintBind(PAINT.finish, "uH", 1, PAINT.tH); paintBind(PAINT.finish, "uSrc", 2, PAINT.src);
   gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
   // put the painting back where the scene was
-  g.save(); g.setTransform(DPR, 0, 0, DPR, 0, 0);
-  g.clearRect(box.x, box.y, box.w, box.h);
-  g.drawImage(PAINT.cv, box.x, box.y, box.w, box.h);
-  g.restore();
-}
-
-// ================================================================
-// ARCHITECTURE — for the Casa Vicens front (2iii). Not a painting: the drawing is read as a plan of materials
-// (each flat colour is one material) and every material is rendered as itself in afternoon sun:
-// glazed ceramic tiles with grout, bevels and a glint; brick in running bond; sandstone; painted wooden
-// lattices; wrought iron; dark window glass; stone paving; a real sky. Ledges cast shadows onto the wall.
-// ================================================================
-const ARCHI_FS = PAINT_COMMON + `
-uniform sampler2D uSrc; uniform vec4 uBox; uniform vec2 uRes; uniform float uT, uScale, uGlint;
-in vec2 vUv; out vec4 o;
-vec4 S(vec2 px){ return texture(uSrc, uBox.xy + clamp(px, vec2(0.5), uRes - .5) / uRes * uBox.zw); }
-const int N = 18;
-const vec3 PAL[18] = vec3[18](
-  vec3(.122,.478,.345), vec3(.957,.945,.910), vec3(.761,.122,.173), vec3(.557,.078,.125), vec3(.922,.847,.635), vec3(.788,.698,.478),
-  vec3(.839,.647,.478), vec3(.110,.102,.102), vec3(.941,.584,.169), vec3(.969,.725,.278), vec3(.122,.435,.416), vec3(.749,.784,.918),
-  vec3(.910,.886,.839), vec3(.227,.110,.078), vec3(.498,.722,.788), vec3(.769,.416,.243), vec3(.878,.478,.122), vec3(.906,.863,.796));
-// material of each palette entry: 1 tile, 2 brick, 3 dark brick, 4 painted wood, 5 sandstone, 6 iron, 7 sky, 8 paving, 9 window, 10 water, 11 terracotta, 12 stone (fountain)
-const int MAT[18] = int[18](1, 1, 2, 3, 4, 4, 5, 6, 1, 1, 1, 7, 8, 9, 10, 11, 1, 12);
-int matOf(vec4 c, out vec3 base){
-  if (c.a < .5) { base = vec3(0); return 0; }
-  float best = 1e9; int id = -1;
-  for (int i = 0; i < N; i++) { vec3 d = c.rgb - PAL[i]; float e = dot(d, d); if (e < best) { best = e; id = i; } }
-  base = c.rgb;
-  return best < .012 ? MAT[id] : 0;    // anything else (plants, water jets, glowing windows) is left as drawn
-}
-float tileLike(int m){ return m == 1 ? 1. : 0.; }
-vec3 sky(vec2 uv){
-  vec3 zen = vec3(.36, .54, .82), hor = vec3(.76, .82, .9);
-  vec3 c = mix(hor, zen, smoothstep(.0, 1., uv.y));
-  float cl = fb(vec2(uv.x * 3. + uT * .01, uv.y * 6.) ) ; cl = smoothstep(.5, .78, cl + fb(uv * 11. + uT * .02) * .15);
-  c = mix(c, vec3(.97, .96, .94) - vec3(.12) * smoothstep(.6, .9, cl) * (1. - uv.y), cl * .8);
-  return mix(c, vec3(.749, .784, .918), .3);   // keep the drawing's soft blue
-}
-void main(){
-  vec2 px = gl_FragCoord.xy, k = vec2(uScale);
-  vec4 c0 = S(px); vec3 base; int m = matOf(c0, base);
-  if (c0.a < .01) { o = vec4(0); return; }
-  vec3 sunDir = normalize(vec3(-.55, .65, .55));   // afternoon sun from the upper left
-  vec3 col = base; vec3 n = vec3(0, 0, 1); float spec = 0., rough = 1.;
-  vec2 q = px / uScale;                               // CSS pixels: textures keep their size on any screen
-  // neighbours, to find tile joints
-  vec3 bt; int mr = matOf(S(px + vec2(1.4, 0) * k), bt), ml = matOf(S(px - vec2(1.4, 0) * k), bt), mu = matOf(S(px + vec2(0, 1.4) * k), bt), md = matOf(S(px - vec2(0, 1.4) * k), bt);
-  vec3 cr = S(px + vec2(1.4, 0) * k).rgb, cl = S(px - vec2(1.4, 0) * k).rgb, cu = S(px + vec2(0, 1.4) * k).rgb, cd = S(px - vec2(0, 1.4) * k).rgb;
-  if (m == 1) {
-    // glazed tile: grout where colour changes, a slight cushion bevel, glaze that catches the sun
-    float joint = max(max(length(cr - base), length(cl - base)), max(length(cu - base), length(cd - base)));
-    float grout = smoothstep(.15, .35, joint);
-    vec2 cell = floor(q / 4.); float tilt = h12(cell) - .5;
-    n = normalize(vec3((cl.r + cl.g - cr.r - cr.g) * .6 + tilt * .12, (cd.r + cd.g - cu.r - cu.g) * .6 + (h12(cell + 3.) - .5) * .12, 1.));
-    col = mix(base * vec3(.94, .96, .95), vec3(.80, .77, .70), grout * .85);
-    col *= .96 + .06 * vn(q * .9);
-    float craze = smoothstep(.97, 1., vn(q * vec2(2.3, .4) + cell * 7.)) * .1; col *= 1. - craze;
-    spec = (1. - grout) * .9; rough = .08;
-  } else if (m == 2 || m == 3) {
-    // brick in running bond: each brick its own fired colour, mortar slightly recessed
-    vec2 b = q / vec2(9., 3.6); b.x += step(1., mod(floor(b.y), 2.)) * .5;
-    vec2 id = floor(b), f = fract(b);
-    float mort = 1. - smoothstep(.0, .09, min(f.y, 1. - f.y)) * smoothstep(.0, .04, min(f.x, 1. - f.x));
-    vec3 brick = mix(vec3(.62, .20, .15), vec3(.74, .30, .20), h12(id)) * (m == 3 ? .72 : 1.);
-    brick = mix(brick, base * .8, .25);                     // keep the drawing's red
-    brick *= .88 + .2 * fb(q * .8 + id * 3.);
-    col = mix(brick, vec3(.72, .66, .58), mort * .9);
-    n = normalize(vec3((vn(q * 1.3) - .5) * .5, (vn(q * 1.3 + 7.) - .5) * .5 + mort * .4, 1.));
-    rough = .9;
-  } else if (m == 4) {
-    // painted wooden lattice: fine grain under satin paint
-    float grain = vn(vec2(q.x * .2, q.y * 3.)) * .6 + vn(q * 2.) * .4;
-    col = base * (.9 + .14 * grain);
-    n = normalize(vec3((cl.r - cr.r) * 1.2, (cd.r - cu.r) * 1.2, 1.)); spec = .25; rough = .4;
-  } else if (m == 5 || m == 12) {
-    // sandstone: sandy grain, darker weathering streaks
-    col = base * (.92 + .1 * fb(q * .35)) * (1. - .08 * smoothstep(.55, .9, fb(vec2(q.x * .3, q.y * .03))));
-    col *= .985 + .025 * h12(floor(q * 1.3));
-    n = normalize(vec3((vn(q * 1.2) - .5) * .3, (vn(q * 1.2 + 5.) - .5) * .3, 1.)); rough = .95;
-  } else if (m == 6) {
-    col = vec3(.09, .09, .095) * (.8 + .4 * vn(q * 1.5)); spec = .5; rough = .3;
-    n = normalize(vec3((cl.r - cr.r) * 3., (cd.r - cu.r) * 3., 1.));
-  } else if (m == 7) {
-    col = sky(vUv);
-  } else if (m == 8) {
-    vec2 b = q / vec2(14., 7.); vec2 id = floor(b), f = fract(b);
-    float j = 1. - smoothstep(.0, .06, min(min(f.x, 1. - f.x), min(f.y, 1. - f.y)));
-    col = base * (.9 + .12 * h12(id)) * (.95 + .08 * vn(q)); col *= 1. - j * .25; rough = .85;
-  } else if (m == 9) {
-    // dark glass of the windows and the room behind: a faint reflection of the sky
-    col = base * .7 + sky(vec2(vUv.x, .7)) * .12 * smoothstep(.3, 1., vn(q * vec2(.05, .2) + 3.)); spec = .6; rough = .05;
-  } else if (m == 11) {
-    col = base * (.85 + .2 * fb(q * .6)); rough = .9;
-  }
-  // light: sun, sky fill, glaze glint
-  if (m != 7 && m != 0 && m != 10) {
-    float ndl = max(dot(n, sunDir), 0.);
-    col *= .62 + .55 * ndl / sunDir.z;
-    vec3 h = normalize(sunDir + vec3(0, 0, 1));
-    col += vec3(1., .97, .9) * pow(max(dot(n, h), 0.), mix(20., 300., 1. - rough)) * spec * (.5 + uGlint);
-  }
-  // cast shadows: ledges, tiled bands and window reveals throw shade down and to the right
-  if (m >= 2 && m != 7) {
-    float sh = 0.;
-    for (int i = 1; i <= 4; i++) { vec3 bb; int mo = matOf(S(px + vec2(-.7, .9) * float(i) * 1.6 * uScale), bb); if (mo == 1 || mo == 6) sh = max(sh, 1. - float(i) * .18); }
-    if (m == 9) { vec3 bb; int mo = matOf(S(px + vec2(-.7, .9) * 5. * uScale), bb); if (mo != 9) sh = max(sh, .7); }
-    col *= 1. - sh * .32;
-  }
-  if (m == 0) col = base;    // plants, water, glowing windows: as drawn
-  // a photograph, not a drawing: gentle contrast, a touch of grain
-  col = clamp(col, 0., 1.); col = col * col * (3. - 2. * col) * .35 + col * .65;
-  col += (h12(px + fract(uT) * 57.) - .5) * .02;
-  o = vec4(col * c0.a, c0.a);
-}`;
-function archiApply(box, t, dt) {
-  if (PAINT.gl === null) paintSetup();
-  if (!PAINT.gl) return;
-  const { gl } = PAINT;
-  if (!PAINT.archi) {
-    const sh = (type, src) => { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s);
-      if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) console.warn("archi shader", gl.getShaderInfoLog(s)); return s; };
-    const p = gl.createProgram(); gl.attachShader(p, sh(gl.VERTEX_SHADER, PAINT_VS)); gl.attachShader(p, sh(gl.FRAGMENT_SHADER, ARCHI_FS));
-    gl.bindAttribLocation(p, 0, "p"); gl.linkProgram(p); if (!gl.getProgramParameter(p, gl.LINK_STATUS)) console.warn("archi link", gl.getProgramInfoLog(p));
-    p.u = {}; PAINT.archi = p;
-  }
-  const cnv = screen.canvas, k = Math.min(DPR, 1.5), w = Math.max(16, Math.round(box.w * k)), h = Math.max(16, Math.round(box.h * k));
-  paintResize(w, h);
-  gl.bindTexture(gl.TEXTURE_2D, PAINT.src);
-  gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true); gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
-  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, cnv);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-  const CW = cnv.width / DPR, CH = cnv.height / DPR;
-  gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.viewport(0, 0, w, h); gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT);
-  paintUse(PAINT.archi, { uBox: [box.x / CW, 1 - (box.y + box.h) / CH, box.w / CW, box.h / CH], uRes: [w, h], uT: t, uScale: k, uGlint: Math.min(1, S.high * 1.5 + S.pulse * 0.5) });
-  paintBind(PAINT.archi, "uSrc", 0, PAINT.src);
-  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
   g.save(); g.setTransform(DPR, 0, 0, DPR, 0, 0);
   g.clearRect(box.x, box.y, box.w, box.h);
   g.drawImage(PAINT.cv, box.x, box.y, box.w, box.h);
@@ -435,7 +299,7 @@ void main(){
   o = vec4(clamp(col, 0., 1.) * c0.a, c0.a);
 }`;
 function realApply(kind, box, t, dt) {
-  if (kind === "archi") return archiApply(box, t, dt);
+  if (R2[kind]) return R2[kind](box, t, dt);
   if (PAINT.gl === null) paintSetup();
   if (!PAINT.gl) return;
   const { gl } = PAINT;
