@@ -3263,14 +3263,14 @@ function wcSetup() {
   `;
   const SH = {
     // a soft drop of water and pigment, its edge broken up so no two drops are round
-    splat: `uniform sampler2D uT; uniform float aspect, radius, seed, ragged, plateau; uniform vec4 value; uniform vec2 point;
+    splat: `uniform sampler2D uT; uniform float aspect, radius, seed, ragged, plateau, radial; uniform vec4 value; uniform vec2 point;
       void main() { vec2 p = vUv - point; p.x *= aspect; float d = dot(p, p) / radius;
         float n = fbm(vUv * 9.0 + seed) - 0.5, dn = d * (1.0 + ragged * n * 2.2);
         float e = mix(exp(-dn * 1.5), smoothstep(1.15, 0.75, dn) * (0.75 + 0.5 * fbm(vUv * 30.0 + seed)), plateau); // a pool of water has an edge
-        o = texture(uT, vUv) + value * e; }`,
+        vec2 dir = p / (length(p) + 0.0001); o = texture(uT, vUv) + value * e + vec4(dir * radial * e * sqrt(d + 0.01), 0.0, 0.0); }`,
     advect: `uniform sampler2D uVel, uSrc, uInk; uniform vec2 texel; uniform float dt, keep, dryDrag;
       void main() { vec2 back = vUv - dt * texture(uVel, vUv).xy * texel; vec4 v = texture(uSrc, back) * keep;
-        float w = clamp(texture(uInk, vUv).a * 3.0, 0.0, 1.0); o = v * mix(dryDrag, 1.0, w); }`,
+        float w = clamp(texture(uInk, vUv).a * 3.0, 0.0, 1.0); vec4 r = v * mix(dryDrag, 1.0, w); if (any(isnan(r))) r = vec4(0.0); o = clamp(r, -60.0, 60.0); }`,
     divergence: `uniform sampler2D uVel;
       void main() { float L = texture(uVel, vL).x, R = texture(uVel, vR).x, T = texture(uVel, vT).y, B = texture(uVel, vB).y; vec2 C = texture(uVel, vUv).xy;
         if (vL.x < 0.0) L = -C.x; if (vR.x > 1.0) R = -C.x; if (vT.y > 1.0) T = -C.y; if (vB.y < 0.0) B = -C.y; o = vec4(0.5 * (R - L + T - B), 0.0, 0.0, 1.0); }`,
@@ -3290,19 +3290,20 @@ function wcSetup() {
       void main() { vec4 c = texture(uInk, vUv); vec2 s = texel * 1.5;
         vec4 n = (texture(uInk, vUv + vec2(s.x, 0)) + texture(uInk, vUv - vec2(s.x, 0)) + texture(uInk, vUv + vec2(0, s.y)) + texture(uInk, vUv - vec2(0, s.y))) * 0.25;
         float fib = paper(vUv), w = clamp(c.a, 0.0, 1.0), wn = clamp(n.a, 0.0, 1.0);
-        float k = spread * dt * (0.35 + 0.9 * fib) * max(w, wn);           // water only travels where there is water
+        float finger = smoothstep(0.25, 0.75, fbm(vUv * paperScale * 0.012 + 3.0));
+        float k = spread * dt * (0.2 + 0.7 * fib + 1.1 * finger) * max(w, wn); // water only travels where there is water, and unevenly
         vec4 m = mix(c, n, clamp(k, 0.0, 0.5));
         float grad = length(vec2(texture(uInk, vUv + vec2(s.x, 0)).a - texture(uInk, vUv - vec2(s.x, 0)).a, texture(uInk, vUv + vec2(0, s.y)).a - texture(uInk, vUv - vec2(0, s.y)).a));
         float settle = dt * (0.06 + 1.6 * (1.0 - smoothstep(0.0, 0.18, w)) + 3.0 * grad) * (0.7 + 0.6 * (1.0 - fib));
         m.rgb *= 1.0 - clamp(settle, 0.0, 0.9);
         m.a = max(0.0, m.a * (1.0 - evap * dt) - 0.004 * dt);
-        o = m; }`,
+        if (any(isnan(m))) m = vec4(0.0); o = clamp(m, 0.0, 6.0); }`,
     dry: `uniform sampler2D uInk, uDry; uniform vec2 texel; uniform float dt, fade;
       void main() { vec4 c = texture(uInk, vUv); vec2 s = texel * 1.5; float fib = paper(vUv), w = clamp(c.a, 0.0, 1.0);
         float grad = length(vec2(texture(uInk, vUv + vec2(s.x, 0)).a - texture(uInk, vUv - vec2(s.x, 0)).a, texture(uInk, vUv + vec2(0, s.y)).a - texture(uInk, vUv - vec2(0, s.y)).a));
         float settle = dt * (0.06 + 1.6 * (1.0 - smoothstep(0.0, 0.18, w)) + 3.0 * grad) * (0.7 + 0.6 * (1.0 - fib));
         vec3 d = texture(uDry, vUv).rgb * (1.0 - fade * dt) + c.rgb * clamp(settle, 0.0, 0.9) * (0.75 + 0.5 * (1.0 - fib)); // more pigment lodges in the hollows: granulation
-        o = vec4(d, 1.0); }`,
+        if (any(isnan(d))) d = vec3(0.0); o = vec4(clamp(d, 0.0, 6.0), 1.0); }`,
     // light passes through the layers of pigment and back off the paper
     display: `uniform sampler2D uInk, uDry; uniform vec2 texel; uniform float grainSeed;
       void main() { vec4 c = texture(uInk, vUv); vec3 dry = texture(uDry, vUv).rgb; float fib = paper(vUv);
@@ -3310,10 +3311,10 @@ function wcSetup() {
         float rim = length(vec2(texture(uInk, vUv + vec2(s.x, 0)).a - texture(uInk, vUv - vec2(s.x, 0)).a, texture(uInk, vUv + vec2(0, s.y)).a - texture(uInk, vUv - vec2(0, s.y)).a));
         vec3 A = dry * 1.15 + c.rgb * (0.85 + rim * 3.5);
         float edge = smoothstep(0.0, 0.05, vUv.x) * smoothstep(1.0, 0.95, vUv.x) * smoothstep(0.0, 0.05, vUv.y) * smoothstep(1.0, 0.95, vUv.y);
-        A *= edge;
+        A *= edge; if (any(isnan(A))) A = vec3(0.0); A = clamp(A, 0.0, 2.4);
         vec3 page = vec3(0.941, 0.933, 0.894), base = page * mix(1.0, 0.975 + 0.04 * fib, edge); // the paper melts into the page at its edges
         vec3 col = base * exp(-A);
-        col *= 1.0 - 0.035 * w * edge;                                   // wet paint is a touch darker
+        col *= 1.0 - 0.018 * w * edge;                                   // wet paint is a touch darker
         col += (hash(gl_FragCoord.xy + grainSeed) - 0.5) * 0.018 * edge; // fine grain
         o = vec4(col, 1.0); }`
   };
@@ -3348,27 +3349,27 @@ function wcUse(name) { const pr = WC.P[name]; WC.gl.useProgram(pr.p); const u = 
 function wcTex(t, unit) { const gl = WC.gl; gl.activeTexture(gl.TEXTURE0 + unit); gl.bindTexture(gl.TEXTURE_2D, t.tex); return unit; }
 function wcDraw(t) { const gl = WC.gl; if (t) { gl.bindFramebuffer(gl.FRAMEBUFFER, t.fb); gl.viewport(0, 0, t.w, t.h); } else { gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.viewport(0, 0, WC.w, WC.h); } gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4); }
 // drop water and pigment at x, y (0..1, y up), pushing it by dx, dy; pigment is given as the colour it paints
-function wcSplat(x, y, dx, dy, col, amount, radius, water, ragged = 0.6) {
+function wcSplat(x, y, dx, dy, col, amount, radius, water, ragged = 0.6, push = 0, pool = 0.75) {
   const gl = WC.gl, aspect = WC.w / WC.h; let u = wcUse("splat");
   gl.uniform1f(u.aspect, aspect); gl.uniform2f(u.point, x, y); gl.uniform1f(u.radius, radius * (aspect > 1 ? aspect : 1) * 0.6); gl.uniform1f(u.seed, Math.random() * 100); gl.uniform1f(u.ragged, ragged);
-  gl.uniform1f(u.plateau, 0); gl.uniform1i(u.uT, wcTex(WC.vel.read, 0)); gl.uniform4f(u.value, dx, dy, 0, 0); wcDraw(WC.vel.write); WC.vel.swap();
+  gl.uniform1f(u.plateau, 0); gl.uniform1f(u.radial, push); gl.uniform1i(u.uT, wcTex(WC.vel.read, 0)); gl.uniform4f(u.value, dx, dy, 0, 0); wcDraw(WC.vel.write); WC.vel.swap();
   const ab = col.map(c => -Math.log(Math.max(0.04, c / 255)) * amount); // how much of each colour of light the pigment swallows
-  gl.uniform1f(u.plateau, 0.75); gl.uniform1f(u.radius, radius * (aspect > 1 ? aspect : 1)); gl.uniform1i(u.uT, wcTex(WC.ink.read, 0)); gl.uniform4f(u.value, ab[0], ab[1], ab[2], water); wcDraw(WC.ink.write); WC.ink.swap();
+  gl.uniform1f(u.plateau, pool); gl.uniform1f(u.radial, 0); gl.uniform1f(u.radius, radius * (aspect > 1 ? aspect : 1)); gl.uniform1i(u.uT, wcTex(WC.ink.read, 0)); gl.uniform4f(u.value, ab[0], ab[1], ab[2], water); wcDraw(WC.ink.write); WC.ink.swap();
 }
 function wcStep(dt) {
   const gl = WC.gl; let u;
   u = wcUse("curl"); gl.uniform2fv(u.texel, WC.vel.read.texel); gl.uniform1i(u.uVel, wcTex(WC.vel.read, 0)); wcDraw(WC.curl);
-  u = wcUse("vorticity"); gl.uniform2fv(u.texel, WC.vel.read.texel); gl.uniform1i(u.uVel, wcTex(WC.vel.read, 0)); gl.uniform1i(u.uCurl, wcTex(WC.curl, 1)); gl.uniform1f(u.swirl, 4); gl.uniform1f(u.dt, dt); wcDraw(WC.vel.write); WC.vel.swap();
+  u = wcUse("vorticity"); gl.uniform2fv(u.texel, WC.vel.read.texel); gl.uniform1i(u.uVel, wcTex(WC.vel.read, 0)); gl.uniform1i(u.uCurl, wcTex(WC.curl, 1)); gl.uniform1f(u.swirl, 0.6); gl.uniform1f(u.dt, dt); wcDraw(WC.vel.write); WC.vel.swap();
   u = wcUse("divergence"); gl.uniform2fv(u.texel, WC.vel.read.texel); gl.uniform1i(u.uVel, wcTex(WC.vel.read, 0)); wcDraw(WC.div);
   u = wcUse("scale"); gl.uniform1i(u.uT, wcTex(WC.pres.read, 0)); gl.uniform1f(u.amount, 0.8); wcDraw(WC.pres.write); WC.pres.swap();
   u = wcUse("pressure"); gl.uniform2fv(u.texel, WC.vel.read.texel); gl.uniform1i(u.uDiv, wcTex(WC.div, 0));
   for (let i = 0; i < 18; i++) { gl.uniform1i(u.uP, wcTex(WC.pres.read, 1)); wcDraw(WC.pres.write); WC.pres.swap(); }
   u = wcUse("gradient"); gl.uniform2fv(u.texel, WC.vel.read.texel); gl.uniform1i(u.uP, wcTex(WC.pres.read, 0)); gl.uniform1i(u.uVel, wcTex(WC.vel.read, 1)); wcDraw(WC.vel.write); WC.vel.swap();
   u = wcUse("advect"); gl.uniform2fv(u.texel, WC.vel.read.texel); gl.uniform1f(u.dt, dt); gl.uniform1i(u.uInk, wcTex(WC.ink.read, 2));
-  gl.uniform1i(u.uVel, wcTex(WC.vel.read, 0)); gl.uniform1i(u.uSrc, wcTex(WC.vel.read, 0)); gl.uniform1f(u.keep, Math.pow(0.35, dt)); gl.uniform1f(u.dryDrag, Math.pow(0.02, dt)); wcDraw(WC.vel.write); WC.vel.swap();
+  gl.uniform1i(u.uVel, wcTex(WC.vel.read, 0)); gl.uniform1i(u.uSrc, wcTex(WC.vel.read, 0)); gl.uniform1f(u.keep, Math.pow(0.15, dt)); gl.uniform1f(u.dryDrag, Math.pow(0.02, dt)); wcDraw(WC.vel.write); WC.vel.swap();
   gl.uniform1i(u.uVel, wcTex(WC.vel.read, 0)); gl.uniform1i(u.uSrc, wcTex(WC.ink.read, 1)); gl.uniform1f(u.keep, 1); gl.uniform1f(u.dryDrag, 1); wcDraw(WC.ink.write); WC.ink.swap();
   u = wcUse("dry"); gl.uniform2fv(u.texel, WC.ink.read.texel); gl.uniform1f(u.dt, dt); gl.uniform1f(u.fade, 0.05); gl.uniform1i(u.uInk, wcTex(WC.ink.read, 0)); gl.uniform1i(u.uDry, wcTex(WC.dry.read, 1)); wcDraw(WC.dry.write); WC.dry.swap();
-  u = wcUse("wet"); gl.uniform2fv(u.texel, WC.ink.read.texel); gl.uniform1f(u.dt, dt); gl.uniform1f(u.spread, 7); gl.uniform1f(u.evap, 0.22); gl.uniform1i(u.uInk, wcTex(WC.ink.read, 0)); wcDraw(WC.ink.write); WC.ink.swap();
+  u = wcUse("wet"); gl.uniform2fv(u.texel, WC.ink.read.texel); gl.uniform1f(u.dt, dt); gl.uniform1f(u.spread, 9); gl.uniform1f(u.evap, 0.16); gl.uniform1i(u.uInk, wcTex(WC.ink.read, 0)); wcDraw(WC.ink.write); WC.ink.swap();
 }
 function mistScene(t, dt, box) {
   if (!WC.gl && WC.ok) wcSetup();
@@ -3384,35 +3385,42 @@ function mistScene(t, dt, box) {
   let num = 0, den = 0.0001; S.spec.forEach((v, i) => { num += v * i; den += v; }); WC.bright += (num / den / 15 - WC.bright) * Math.min(1, dt);
   const playing = !!nowPlaying, pick2 = k => WC.pal[(k + 4) % 4];
   // brushes: three wandering points of wet paint that follow the melody, trailing pigment in soft strokes
-  if (!WC.brushes.length) for (let k = 0; k < 3; k++) WC.brushes.push({ x: 0.3 + k * 0.2, y: 0.5, px: 0.5, py: 0.5, k, acc: 0 });
+  if (!WC.brushes.length) for (let k = 0; k < 3; k++) { const x = 0.2 + Math.random() * 0.6, y = 0.25 + Math.random() * 0.5; WC.brushes.push({ x, y, px: x, py: y, k, acc: 0 }); }
   if (playing) WC.brushes.forEach(b => {
-    const sp = 0.05 + S.mid * 0.12, a = noise2(b.k * 10 + t * 0.07, t * 0.05) * TAU * 2;
+    // each brush glides along a smooth curve and touches the paper only during a phrase, laying overlapping dabs: a stroke
+    const sp = 0.06 + S.mid * 0.16, a = noise2(b.k * 10 + t * 0.05, t * 0.03) * TAU * 1.5;
     b.px = b.x; b.py = b.y; b.x += Math.cos(a) * sp * dt; b.y += Math.sin(a) * sp * dt;
-    b.x += (0.5 - b.x) * dt * 0.05; b.y += (0.5 - b.y) * dt * 0.05;
-    b.acc += dt * (2 + S.mid * 14);
-    if (b.acc > 1 && S.mid > 0.12) { b.acc = 0; wcSplat(b.x, b.y, (b.x - b.px) / dt * 220, (b.y - b.py) / dt * 220, pick2(b.k + Math.round(WC.bright * 2)), 0.06 + S.mid * 0.12, 0.0006 + S.mid * 0.0012, 0.12, 0.8); }
+    b.x += (0.5 - b.x) * dt * 0.08; b.y += (0.5 - b.y) * dt * 0.08;
+    if (b.x < 0.14 || b.x > 0.86 || b.y < 0.16 || b.y > 0.84) { b.x += (0.5 - b.x) * dt * 1.2; b.y += (0.5 - b.y) * dt * 1.2; } // turn back before the edge of the sheet
+    const down = S.mid > 0.15 && noise2(b.k * 7, t * 0.25) > 0.42;
+    if (down) { // paint goes down in proportion to how far the brush travels, so a slow brush never leaves a blot
+      b.acc += dt * 50; b.dist = (b.dist || 0) + Math.hypot(b.x - b.px, b.y - b.py);
+      if (b.acc > 1) { b.acc = 0; b.load = (b.load || 1) * 0.985; const press = 0.5 + noise2(t * 1.3, b.k * 5), vx = Math.max(-15, Math.min(15, (b.x - b.px) / dt * 30)), vy = Math.max(-15, Math.min(15, (b.y - b.py) / dt * 30));
+        wcSplat(b.x, b.y, vx, vy, pick2(b.k + Math.round(WC.bright * 2)), Math.min(0.07, b.dist * 28) * b.load * (0.7 + S.mid), (0.0016 + S.mid * 0.0014) * press, 0.6, 1, 0, 0.15); b.dist = 0; } }
+    else b.load = 1; // lifted: the brush is dipped again
   });
   // occasional quiet washes so the paper is never bare for long
   if (playing && Math.random() < dt * 0.08) { const x = Math.random(), y = Math.random(), c = pick2(Math.floor(Math.random() * 4)); for (let k = 0; k < 4; k++) wcSplat(x + (Math.random() - 0.5) * 0.12, y + (Math.random() - 0.5) * 0.12, (Math.random() - 0.5) * 40, (Math.random() - 0.5) * 40, c, 0.05, 0.004 + Math.random() * 0.006, 0.5, 1); }
   wcStep(Math.min(dt, 0.033));
   const gl = WC.gl, u = wcUse("display"); gl.uniform2fv(u.texel, WC.ink.read.texel); gl.uniform1f(u.grainSeed, 0); gl.uniform1i(u.uInk, wcTex(WC.ink.read, 0)); gl.uniform1i(u.uDry, wcTex(WC.dry.read, 1)); wcDraw(null);
   g.drawImage(WC.cv, box.x, box.y, box.w, box.h);
-  // flecks: tiny grains of pigment carried on the surface, drifting on slow currents, more when the music brightens
-  if (playing && WC.flecks.length < 320) for (let k = 0; k < (S.high * 40 + 2) * dt * 10; k++) { const b = WC.brushes[Math.floor(Math.random() * 3)]; WC.flecks.push({ x: b.x + (Math.random() - 0.5) * 0.15, y: b.y + (Math.random() - 0.5) * 0.15, life: 3 + Math.random() * 5, age: 0, s: 0.4 + Math.random() * 1.1, c: pick2(Math.floor(Math.random() * 4)) }); }
-  WC.flecks = WC.flecks.filter(f => (f.age += dt) < f.life);
-  WC.flecks.forEach(f => {
-    const a = noise2(f.x * 3 + t * 0.05, f.y * 3) * TAU * 2; f.x += Math.cos(a) * dt * 0.012; f.y += Math.sin(a) * dt * 0.012;
-    const fade = Math.min(1, f.age * 2, (f.life - f.age) * 0.7), cc = f.c.map(v => Math.round(v * 0.55));
-    g.beginPath(); g.arc(box.x + f.x * box.w, box.y + (1 - f.y) * box.h, f.s, 0, TAU); g.fillStyle = `rgba(${cc[0]},${cc[1]},${cc[2]},${0.45 * fade})`; g.fill();
-  });
 }
 // a beat drops a bloom of pigment-laden water; the louder the beat, the bigger and darker
 function mistBeat() {
   if (!WC.gl || !WC.pal || time - WC.lastBloom < 0.35) return; WC.lastBloom = time;
-  const c = WC.pal[Math.floor(Math.random() * 4)], x = 0.15 + Math.random() * 0.7, y = 0.15 + Math.random() * 0.7, s = S.bass;
-  wcSplat(x, y, (Math.random() - 0.5) * 140, (Math.random() - 0.5) * 140, c, 0.16 + s * 0.3, 0.004 + s * 0.012, 0.9 + s * 0.6, 0.9);
-  if (Math.random() < 0.4) wcSplat(x + (Math.random() - 0.5) * 0.08, y + (Math.random() - 0.5) * 0.08, 0, 0, WC.pal[Math.floor(Math.random() * 4)], 0.2, 0.002, 0.6, 1);
+  const c = WC.pal[Math.floor(Math.random() * 4)], s = S.bass;
+  if (Math.random() < 0.4 && WC.brushes.length) { const b = WC.brushes[Math.floor(Math.random() * 3)]; wcSplat(b.x + (Math.random() - 0.5) * 0.06, b.y + (Math.random() - 0.5) * 0.06, 0, 0, [255, 255, 255], 0, 0.004 + s * 0.006, 1.2, 1, 25 + s * 25); return; }
+  const x = 0.15 + Math.random() * 0.7, y = 0.15 + Math.random() * 0.7;
+  wcSplat(x, y, 0, 0, c, 0.2 + s * 0.35, 0.003 + s * 0.01, 1 + s * 0.6, 0.9, 25);
+  if (Math.random() < 0.5) wcSplat(x + (Math.random() - 0.5) * 0.05, y + (Math.random() - 0.5) * 0.05, 0, 0, WC.pal[Math.floor(Math.random() * 4)], 0.16, 0.0015, 0.5, 1, 15); // a second colour dropped in while wet
 }
+// wipe the paper clean (on pause, so the next visitor starts with a blank sheet)
+function wcReset() {
+  if (!WC.gl) return; const gl = WC.gl;
+  for (const t of [WC.vel.read, WC.vel.write, WC.pres.read, WC.pres.write, WC.div, WC.curl, WC.ink.read, WC.ink.write, WC.dry.read, WC.dry.write]) { gl.bindFramebuffer(gl.FRAMEBUFFER, t.fb); gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT); }
+  WC.flecks = []; WC.brushes = []; WC.pal = null;
+}
+
 
 const ARTS = {
   // segments: how many mirrored slices; drift: how far the slice wanders across the pattern
@@ -3569,6 +3577,7 @@ async function play() {
 }
 function pause() {
   wantSound = false;
+  wcReset(); // a clean sheet for the next visitor
   stopPiece();
   document.body.classList.remove("playing");
   playBtn.setAttribute("aria-label", "Play");
