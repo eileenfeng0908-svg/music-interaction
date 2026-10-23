@@ -1,7 +1,7 @@
 // ================================================================
 // ROOM 2, pieces ii and iii — redesigned Oct 23.
 //   ii  AZULEJOS: a wall of glazed Andalusian tiles on which the ornament draws and glazes itself
-//   iii FLAMENCO: a ruffled silk skirt and a painted fan, moved by an unseen dancer
+//   iii SEDA: two lengths of crimson silk and chiffon suspended in moving air, a living sculpture
 // ================================================================
 
 // ----------------------------------------------------------------
@@ -286,386 +286,214 @@ function azulejoBeat() {
   azu.fronts.forEach((f, i) => { f.target = Math.max(f.target, f.R) + (0.08 + strength * 0.5) * (i === azu.fronts.length - 1 ? 1 : 0.6); });
 }
 
-// ----------------------------------------------------------------
-// 2iii  FLAMENCO. The skirt of a traje de flamenca and a painted fan, in a dark tablao under a warm
-// spotlight, moved by a dancer we never see. The skirt is fitted to the knee, then opens into three tiers
-// of volantes (circle-cut flounces, burgundy and crimson silk, each edged with a gold galón and black lace).
-// The cloth is simulated: thousands of points joined by threads that stretch a little and bend a little,
-// under gravity and air resistance, held at the hips and pushed by the legs. Nothing is animated directly:
-// the music moves the unseen body (hips swaying to the compás, a step, a turn of the hips, a full turn on
-// the strongest beats) and the silk follows as silk does, late and in waves. Quiet passages leave only the
-// slow sway and a soft stir of air. The fan, silk painted with roses on black lacquered ribs with gilded
-// guards, snaps open on the beat with a turn of the wrist, then drifts half closed.
-// ----------------------------------------------------------------
-const FLA = { ready: false };
-const fla = { yaw: { x: 0, v: 0 }, sway: { x: 0, v: 0 }, roll: { x: 0, v: 0 }, spin: 0, spinV: 0, spinGoal: 0, side: 1, lastSpin: -9, knee: [0, 0], fan: 0.5, fanV: 0, fanGoal: 0.5, wrist: { x: 0, v: 0 }, lastT: -9, now: 0 };
-const FL_NU = 64, FL_PIN = 8, FL_FREE = 17, FL_NV = FL_NU * 0 + FL_PIN + FL_FREE, FL_DV = 0.0325;
-const FL_VU = 160, FL_VV = 10, FL_DVV = 0.028, FL_REP = 40, FL_TIERS = [FL_PIN - 1, FL_PIN - 1 + 6, FL_PIN - 1 + 12];
 
-// the body inside the skirt, in its own frame: half-widths of the fitted skirt from the waist to the knee
-function flProfile(y) {
-  const K = [[1.12, 0.135, 0.105], [0.9, 0.185, 0.15], [0.72, 0.168, 0.132], [0.55, 0.14, 0.115]];
-  for (let i = 0; i < K.length - 1; i++) if (y >= K[i + 1][0]) { const a = K[i], b = K[i + 1], s = (y - b[0]) / (a[0] - b[0]), e = s * s * (3 - 2 * s);
-    return [b[1] + (a[1] - b[1]) * e, b[2] + (a[2] - b[2]) * e]; }
-  return [K[3][1], K[3][2]];
-}
-function flCloth() {
-  const P = [], W = [], C = [], A = [];                         // particles, inverse masses, constraints, attachments
-  const add = (x, y, z, w) => { P.push(x, y, z); W.push(w); return W.length - 1; };
-  const con = (i, j, r, k) => C.push([i, j, r, k]);
-  // the skirt: fitted rows pinned to the body, then the free cloth below the knee, flaring into godets
-  const base = W.length, ringR = [];
-  for (let v = 0; v < FL_NV; v++) {
-    const f = v - (FL_PIN - 1), y = v < FL_PIN ? 1.12 - v * (0.57 / (FL_PIN - 1)) : 0.55 - f * FL_DV * Math.cos(0.42);
-    const [rx, rz] = v < FL_PIN ? flProfile(y) : [0.14 + f * FL_DV * Math.sin(0.42), 0.115 + f * FL_DV * Math.sin(0.42)];
-    ringR.push((rx + rz) / 2);
-    for (let u = 0; u < FL_NU; u++) { const a = u / FL_NU * TAU; add(Math.sin(a) * rx, y, Math.cos(a) * rz, v < FL_PIN ? 0 : 1); }
-  }
-  const B = (u, v) => base + v * FL_NU + ((u % FL_NU) + FL_NU) % FL_NU;
-  const restU = v => { const f = Math.max(0, v - (FL_PIN - 1)); return TAU * (0.128 + f * FL_DV * Math.sin(0.42)) * (1 + f * 0.012) / FL_NU; };
-  for (let v = FL_PIN - 1; v < FL_NV; v++) for (let u = 0; u < FL_NU; u++) {
-    const ru = restU(v);
-    if (v >= FL_PIN) con(B(u, v), B(u + 1, v), ru, 1);
-    if (v + 1 < FL_NV) { con(B(u, v), B(u, v + 1), FL_DV, 1);
-      const rd = Math.hypot((ru + restU(v + 1)) / 2, FL_DV); con(B(u, v), B(u + 1, v + 1), rd, 0.6); con(B(u + 1, v), B(u, v + 1), rd, 0.6); }
-    if (v >= FL_PIN) con(B(u, v), B(u + 2, v), ru * 2, 0.12);
-    if (v + 2 < FL_NV) con(B(u, v), B(u, v + 2), FL_DV * 2, 0.12);
-  }
-  // three volantes: circle-cut flounces whose lower edge is twice as long as the seam they hang from,
-  // so they fall in deep, rolling folds; a horsehair braid in the hem gives the edge a little spring
-  const tiers = FL_TIERS.map((row, k) => {
-    const t0 = W.length, R = ringR[row], top = TAU * R / FL_VU, full = 2.4;
-    for (let j = 0; j < FL_VV; j++) {
-      const s = j / (FL_VV - 1), rr = R + j * FL_DVV * 0.5, y = (row < FL_PIN ? 0.55 : 0.55 - (row - FL_PIN + 1) * FL_DV) - j * FL_DVV * 0.85;
-      // start already folded: waves deep enough that each row has the length it was cut with
-      const ratio = Math.max(1, (1 + full * s) * R / rr), amp = rr * Math.sqrt(2 * (ratio * ratio - 1)) / 19;
-      for (let u = 0; u < FL_VU; u++) { const a = u / FL_VU * TAU, wv = Math.sin(a * 19 + k * 2) * amp;
-        add(Math.sin(a) * (rr + wv) * 1.1, y + Math.cos(a * 19 + k * 2) * amp * 0.3, Math.cos(a) * (rr + wv) * 0.92, j === 0 && row < FL_PIN ? 0 : 1); }
+// ----------------------------------------------------------------
+// 2iii  SEDA. An installation, not a dress: two long lengths of fabric hang from points above the frame
+// in a warm, softly lit gallery space: a crimson matte silk crêpe and, behind it, a sheer muted-red
+// chiffon. Each is gathered where it is held, so folds fan out from the top, and its end pools on the floor.
+// The cloth is simulated (gravity, inertia, threads that stretch little and bend easily, air resistance
+// across the cloth), and only the music moves it: it carries the points where the fabric is held in
+// slow arcs whose pace follows the music's intensity, and every beat is a sweep, the way a dancer swings
+// a mantón or kicks the train of a bata de cola. A beat sends a gust in the direction of the sweep and turns
+// the hold so the fabric twists; the strongest beats raise a rising spiral of air that lifts the silk and
+// unfolds it. Quiet passages leave it floating and barely moving. The backlight glows through the cloth.
+// ----------------------------------------------------------------
+const SIL = { ready: false };
+const sil = { E: 0, ph: 0, side: 1, n: 0, gust: [0, 0, 0], vort: 0, lastVort: -9, lastT: -9, now: 0, queue: [] };
+const SIL_P = [
+  // columns, rows, spacing (m), drag (the sheer chiffon catches more air), and the two points it is held by
+  { cols: 38, rows: 88, sp: 0.04, drag: 0.12, holds: [[-1.0, 3.0, 0.1], [0.1, 3.08, 0.3]] },
+  { cols: 34, rows: 80, sp: 0.04, drag: 0.2, holds: [[0.15, 3.08, -0.6], [1.15, 3.0, -0.45]] }
+];
+function silCloth() {
+  const P = [], W = [], K = [], C = [], panels = [];
+  SIL_P.forEach((Q, k) => {
+    const t0 = W.length, { cols, rows, sp } = Q, [A, B] = Q.holds;
+    for (let v = 0; v < rows; v++) for (let u = 0; u < cols; u++) {
+      const s = u / (cols - 1);
+      P.push(A[0] + (B[0] - A[0]) * s, A[1] + (B[1] - A[1]) * s - v * sp * 0.97, A[2] + (B[2] - A[2]) * s + Math.sin(u * 0.7 + v * 0.11) * 0.02);
+      W.push(1); K.push(Q.drag);
     }
-    const V = (u, j) => t0 + j * FL_VU + ((u % FL_VU) + FL_VU) % FL_VU;
-    const ru = j => top * (1 + full * j / (FL_VV - 1));
-    for (let j = 0; j < FL_VV; j++) for (let u = 0; u < FL_VU; u++) {
-      con(V(u, j), V(u + 1, j), ru(j), 1);
-      if (j + 1 < FL_VV) { con(V(u, j), V(u, j + 1), FL_DVV, 1); const rd = Math.hypot((ru(j) + ru(j + 1)) / 2, FL_DVV); con(V(u, j), V(u + 1, j + 1), rd, 0.5); con(V(u + 1, j), V(u, j + 1), rd, 0.5); }
-      con(V(u, j), V(u + 2, j), ru(j) * 2, j > FL_VV - 3 ? 0.14 : 0.07);
-      if (j + 2 < FL_VV) con(V(u, j), V(u, j + 2), FL_DVV * 2, 0.35);
+    const I = (u, v) => t0 + v * cols + u;
+    for (let v = 0; v < rows; v++) for (let u = 0; u < cols; u++) {
+      if (u + 1 < cols) C.push([I(u, v), I(u + 1, v), sp, 1]);
+      if (v + 1 < rows) { C.push([I(u, v), I(u, v + 1), sp, 1]);
+        if (u + 1 < cols) { C.push([I(u, v), I(u + 1, v + 1), sp * Math.SQRT2, 0.45]); C.push([I(u + 1, v), I(u, v + 1), sp * Math.SQRT2, 0.45]); } }
+      if (u + 2 < cols) C.push([I(u, v), I(u + 2, v), sp * 2, 0.05]);    // silk bends easily, so the bending threads are soft
+      if (v + 2 < rows) C.push([I(u, v), I(u, v + 2), sp * 2, 0.05]);
     }
-    // the seam: each point of the flounce's top edge is sewn to the skirt between two of its points
-    for (let u = 0; u < FL_VU; u++) { const pu = u * FL_NU / FL_VU, a = Math.floor(pu), wb = pu - a; A.push([V(u, 0), B(a, row), B(a + 1, row), wb]); }
-    return { t0, row, V };
+    // held at two corners of the top edge, each gathered a little in the hand of an unseen holder
+    const holds = [[0, 1, 2], [cols - 3, cols - 2, cols - 1]].map((us, h) => { us.forEach(u => W[I(u, 0)] = 0); return { us, home: Q.holds[h], a: { p: Q.holds[h].slice(), v: [0, 0, 0] } }; });
+    panels.push({ t0, cols, rows, Q, I, holds });
   });
-  const n = W.length, X = new Float32Array(P), O = new Float32Array(P);
-  const ci = new Int32Array(C.length * 2), cr = new Float32Array(C.length), ck = new Float32Array(C.length);
+  const n = W.length, ci = new Int32Array(C.length * 2), cr = new Float32Array(C.length), ck = new Float32Array(C.length);
   C.forEach(([i, j, r, k], m) => { ci[m * 2] = i; ci[m * 2 + 1] = j; cr[m] = r; ck[m] = k; });
-  // for each volante point: which ring of the skirt lies beneath it (it must stay outside that ring)
-  const under = new Int32Array(n).fill(-1), lift = new Float32Array(n);
-  tiers.forEach(T => { for (let j = 0; j < FL_VV; j++) for (let u = 0; u < FL_VU; u++) {
-    under[T.V(u, j)] = Math.min(FL_NV - 1, T.row + Math.round(j * FL_DVV * 0.85 / FL_DV)); lift[T.V(u, j)] = 0.006 + j * 0.0025; } });
-  return { n, X, O, W: new Float32Array(W), ci, cr, ck, A, tiers, base, under, lift, L: new Float32Array(n * 3), N: new Float32Array(n * 3) };
+  return { n, X: new Float32Array(P), O: new Float32Array(P), W: new Float32Array(W), K: new Float32Array(K), N: new Float32Array(n * 3), ci, cr, ck, panels };
 }
-
-// the textures of the silk: ground colour, a gold galón, then black lace with a scalloped edge
-function flSilkTex(col) {
-  const w = 256, h = 1024, c = casaCv(w, h), x = c.getContext("2d"), a = casaCv(w, h), y = a.getContext("2d"), m = casaCv(w, h), z = m.getContext("2d");
-  const r = seeded(31), lace0 = 0.8 * h;
-  x.fillStyle = col; x.fillRect(0, 0, w, h);
-  for (let i = 0; i < 900; i++) { x.fillStyle = `rgba(${r() < 0.5 ? "0,0,0" : "255,220,210"},${0.012 + r() * 0.02})`; x.fillRect(0, r() * h, w, 1 + r() * 2); }   // slubs in the weave
-  y.fillStyle = "#fff"; y.fillRect(0, 0, w, h);
-  z.fillStyle = "rgb(0,110,0)"; z.fillRect(0, 0, w, h);
-  // the galón: a narrow woven gold braid sewn just above the lace
-  const g0 = lace0 - 26;
-  x.fillStyle = "#B88C3E"; x.fillRect(0, g0, w, 18); z.fillStyle = "rgb(0,95,255)"; z.fillRect(0, g0, w, 18);
-  for (let i = 0; i < w; i += 6) { x.fillStyle = "rgba(255,230,170,0.35)"; x.fillRect(i, g0 + 2, 3, 14); x.fillStyle = "rgba(70,40,10,0.35)"; x.fillRect(i + 3, g0 + 2, 1, 14); }
-  // the lace: black, a scalloped edge, a flower in each scallop, eyelets and a net
-  x.fillStyle = "#060405"; x.fillRect(0, lace0 - 6, w, h - lace0 + 6); z.fillStyle = "rgb(0,195,0)"; z.fillRect(0, lace0 - 6, w, h - lace0 + 6);
-  y.fillStyle = "#000"; y.fillRect(0, lace0, w, h - lace0);
-  y.fillStyle = "#fff";
-  const sc = () => { y.beginPath(); y.moveTo(0, lace0); y.lineTo(w, lace0); y.lineTo(w, h - 70); y.bezierCurveTo(w * 0.85, h - 4, w * 0.15, h - 4, 0, h - 70); y.closePath(); };
-  sc(); y.fill();
-  // holes of the net, then the solid motifs drawn back over it
-  y.fillStyle = "#000";
-  for (let j = 0; j < 14; j++) for (let i = 0; i < 22; i++) { const px = i * 12 + (j % 2) * 6, py = lace0 + 14 + j * 12; y.beginPath(); y.arc(px, py, 3.6, 0, TAU); y.fill(); }
-  y.fillStyle = "#fff"; y.strokeStyle = "#fff";
-  const cx = w / 2, cy = lace0 + 88;
-  for (let k = 0; k < 6; k++) { y.save(); y.translate(cx, cy); y.rotate(k / 6 * TAU); y.beginPath(); y.ellipse(0, -26, 13, 24, 0, 0, TAU); y.fill(); y.restore(); }
-  y.fillStyle = "#000"; for (let k = 0; k < 6; k++) { y.save(); y.translate(cx, cy); y.rotate(k / 6 * TAU); y.beginPath(); y.ellipse(0, -28, 5, 13, 0, 0, TAU); y.fill(); y.restore(); }
-  y.fillStyle = "#fff"; y.beginPath(); y.arc(cx, cy, 9, 0, TAU); y.fill();
-  for (const sx of [0, w]) { y.save(); y.translate(sx, lace0 + 60); for (let k = 0; k < 5; k++) { y.beginPath(); y.ellipse(Math.cos(k * 1.26) * 18, Math.sin(k * 1.26) * 18, 7, 12, k * 1.26 + 1.57, 0, TAU); y.fill(); } y.restore(); }
-  y.lineWidth = 7; sc(); y.stroke();                                // the cord along the scalloped edge
-  y.fillStyle = "#fff"; y.fillRect(0, lace0, w, 10);
-  y.fillStyle = "#000"; for (let i = 0; i < w; i += 16) { y.beginPath(); y.arc(i + 8, lace0 + 26, 4.5, 0, TAU); y.fill(); }   // a row of eyelets
-  // where the silk sheen shows: the fabric, not the braid or the lace
-  const sh = casaCv(w, h), q = sh.getContext("2d"); q.fillStyle = "#fff"; q.fillRect(0, 0, w, h); q.fillStyle = "#111"; q.fillRect(0, g0, w, h - g0);
-  return { c, a, m, sh };
+function silPin(cl) {
+  for (const pn of cl.panels) for (const H of pn.holds) H.us.forEach((u, j) => { const i = pn.I(u, 0) * 3; cl.X[i] = H.a.p[0] + (j - 1) * 0.025; cl.X[i + 1] = H.a.p[1]; cl.X[i + 2] = H.a.p[2]; });
 }
-// the fan leaf: silk painted in gouache with roses and carnations, framed by gilded bands
-function flFanTex(r2, r1, span) {
-  const S2 = 2048, c = casaCv(S2, S2 / 2 + 40), x = c.getContext("2d"), sc = (S2 / 2 - 24) / r2, cx = S2 / 2, cy = S2 / 2 + 10, r = seeded(902);
-  x.fillStyle = "#E9DEC8"; x.fillRect(0, 0, c.width, c.height);
-  for (let i = 0; i < 4000; i++) { x.fillStyle = `rgba(${r() < 0.5 ? "120,90,60" : "255,250,240"},${0.03 + r() * 0.04})`; x.fillRect(r() * c.width, r() * c.height, 1 + r() * 30, 1); }
-  const P = (rad, a) => [cx + Math.sin(a) * rad * sc, cy - Math.cos(a) * rad * sc];
-  const band = (ra, rb, col) => { x.beginPath(); x.arc(cx, cy, rb * sc, -Math.PI / 2 - span / 2 - 0.05, -Math.PI / 2 + span / 2 + 0.05); x.arc(cx, cy, ra * sc, -Math.PI / 2 + span / 2 + 0.05, -Math.PI / 2 - span / 2 - 0.05, true); x.closePath(); x.fillStyle = col; x.fill(); };
-  band(r2 - 0.012, r2, "#B98E43"); band(r2 - 0.015, r2 - 0.012, "#2A1A12"); band(r1, r1 + 0.01, "#B98E43"); band(r1 + 0.01, r1 + 0.012, "#2A1A12");
-  // leaves first, then the flowers over them: crimson and burgundy roses, a few white carnations, gold sprigs
-  const leafC = ["#4B5233", "#3C4429", "#5E6340"], flowers = [];
-  for (let i = 0; i < 9; i++) { const a = -span / 2 + 0.18 + (span - 0.36) * (i / 8) + (r() - 0.5) * 0.08, rad = r1 + (r2 - r1) * (0.5 + Math.sin(i * 1.7) * 0.15); flowers.push([a, rad, i]); }
-  for (const [a, rad] of flowers) for (let k = 0; k < 5; k++) {
-    const [px, py] = P(rad + (r() - 0.5) * 0.025, a + (r() - 0.5) * 0.12), ang = r() * TAU, L = (0.016 + r() * 0.012) * sc / 40;
-    x.save(); x.translate(px, py); x.rotate(ang); x.fillStyle = leafC[k % 3];
-    x.beginPath(); x.moveTo(0, 0); x.quadraticCurveTo(L * 18, -L * 9, L * 40, 0); x.quadraticCurveTo(L * 18, L * 9, 0, 0); x.fill();
-    x.strokeStyle = "rgba(230,220,180,0.25)"; x.lineWidth = 1.5; x.beginPath(); x.moveTo(2, 0); x.lineTo(L * 36, 0); x.stroke(); x.restore();
-  }
-  for (const [a, rad, i] of flowers) {
-    const [px, py] = P(rad, a), R = (i % 3 === 1 ? 0.014 : 0.018) * sc, white = i % 4 === 2, base = white ? [236, 228, 214] : i % 2 ? [128, 22, 38] : [92, 14, 30];
-    for (let ring = 0; ring < 4; ring++) for (let k = 0; k < 7 - ring; k++) {
-      const an = k / (7 - ring) * TAU + ring * 0.5 + i, rr = R * (1 - ring * 0.22), sh = 1 - ring * 0.12 + (r() - 0.5) * 0.1;
-      x.fillStyle = `rgb(${base.map(q => Math.round(Math.min(255, q * (white ? 1 - ring * 0.04 : sh + ring * 0.12)))).join(",")})`;
-      x.beginPath(); x.ellipse(px + Math.cos(an) * rr * 0.45, py + Math.sin(an) * rr * 0.45, rr * 0.55, rr * 0.38, an, 0, TAU); x.fill();
-      x.strokeStyle = white ? "rgba(140,30,40,0.5)" : "rgba(255,200,190,0.18)"; x.lineWidth = 1.2; x.stroke();
-    }
-    x.fillStyle = white ? "#C9A24D" : "rgba(40,6,10,0.6)"; x.beginPath(); x.arc(px, py, R * 0.16, 0, TAU); x.fill();
-  }
-  x.strokeStyle = "#B98E43"; x.lineWidth = 2.2;
-  for (let i = 0; i < 26; i++) { const a = -span / 2 + 0.1 + r() * (span - 0.2), rad = r1 + 0.02 + r() * (r2 - r1 - 0.05), [px, py] = P(rad, a), an = r() * TAU;
-    x.beginPath(); x.moveTo(px, py); x.quadraticCurveTo(px + Math.cos(an) * 14, py + Math.sin(an) * 14, px + Math.cos(an + 0.6) * 26, py + Math.sin(an + 0.6) * 26); x.stroke();
-    x.fillStyle = "#C9A24D"; x.beginPath(); x.arc(px + Math.cos(an + 0.6) * 26, py + Math.sin(an + 0.6) * 26, 2.8, 0, TAU); x.fill(); }
-  return { c, uv: (rad, a) => [(cx + Math.sin(a) * rad * sc) / c.width, 1 - (cy - Math.cos(a) * rad * sc) / c.height] };
+// the air: a faint drift that follows the music, the gust of the last sweep, and on the strongest beats a rising spiral
+function silWind(x, y, z, out) {
+  const E = sil.E, ph = sil.ph;
+  let wx = Math.sin(ph * 0.7 + y * 0.8) * 0.25 * E + sil.gust[0], wy = sil.gust[1] + Math.sin(ph * 0.5 + x * 1.3) * 0.12 * E, wz = Math.cos(ph * 0.6 + y * 0.6) * 0.2 * E + sil.gust[2];
+  if (sil.vort > 0.01) { const dx = x - 0.1, dz = z + 0.1, r = Math.hypot(dx, dz) + 0.25, f = sil.vort * Math.exp(-r * r * 0.8);
+    wx += -dz / r * f * 1.8 + dx / r * f * 0.4; wz += dx / r * f * 1.8 + dz / r * f * 0.4; wy += f * 1.6 * Math.max(0, 1.4 - y * 0.45); }
+  out[0] = wx; out[1] = wy; out[2] = wz;
 }
-function flWoodTex() {
-  const w = 1024, h = 1024, c = casaCv(w, h), x = c.getContext("2d"), m = casaCv(w, h), z = m.getContext("2d"), r = seeded(55);
-  const bw = w / 30;
-  for (let i = 0; i < 30; i++) {
-    let y0 = -r() * 400;
-    while (y0 < h) { const L = 300 + r() * 500, v = 0.75 + r() * 0.35;
-      x.fillStyle = `rgb(${Math.round(52 * v)},${Math.round(34 * v)},${Math.round(24 * v)})`; x.fillRect(i * bw, y0, bw, L);
-      for (let k = 0; k < 14; k++) { x.fillStyle = `rgba(${r() < 0.5 ? "20,10,6" : "110,80,55"},${0.08 + r() * 0.1})`; x.fillRect(i * bw + r() * bw, y0, 1 + r() * 2, L); }
-      x.fillStyle = "rgba(10,6,4,0.9)"; x.fillRect(i * bw, y0, bw, 2);
-      z.fillStyle = `rgb(0,${Math.round(90 + r() * 70)},0)`; z.fillRect(i * bw, y0, bw, L); y0 += L; }
-    x.fillStyle = "rgba(8,5,3,0.95)"; x.fillRect(i * bw, 0, 1.5, h);
-  }
-  return { c, m };
-}
-
-function flBuild() {
-  const T = THREE, scene = new T.Scene();
-  const r = new T.WebGLRenderer({ antialias: true, alpha: false, powerPreference: "high-performance" });
-  r.setPixelRatio(1); r.shadowMap.enabled = true; r.shadowMap.type = T.PCFSoftShadowMap;
-  r.outputEncoding = T.sRGBEncoding; r.toneMapping = T.ACESFilmicToneMapping; r.toneMappingExposure = 0.9;
-  const aniso = r.capabilities.getMaxAnisotropy();
-  scene.background = new T.Color(0x060404);
-  const tex = (cv, srgb, rep) => { const t = new T.CanvasTexture(cv); t.anisotropy = aniso; t.wrapS = t.wrapT = T.RepeatWrapping; if (srgb) t.encoding = T.sRGBEncoding; return t; };
-  // reflections: a dark room with two warm softboxes
-  const env = new T.Scene();
-  env.add(new T.Mesh(new T.SphereGeometry(20, 32, 16), new T.MeshBasicMaterial({ color: 0x0c0807, side: T.BackSide })));
-  const sb = (x, y, z, w, h, c) => { const m = new T.Mesh(new T.PlaneGeometry(w, h), new T.MeshBasicMaterial({ color: c, side: T.DoubleSide })); m.position.set(x, y, z); m.lookAt(0, 0.6, 0); env.add(m); };
-  sb(-5, 8, 7, 4, 3, 0xffcf9a); sb(6, 6, -7, 3, 5, 0xd8925a); sb(0, -3, 9, 10, 2, 0x2a1a12);
-  scene.environment = new T.PMREMGenerator(r).fromScene(env, 0.03).texture;
-
-  // the tablao: a floor of dark boards, and a black velvet curtain behind
-  const wood = flWoodTex(), wm = tex(wood.c, true), wr = tex(wood.m);
-  [wm, wr].forEach(t => t.repeat.set(2, 2));
-  const floor = new T.Mesh(new T.PlaneGeometry(8, 8), new T.MeshStandardMaterial({ map: wm, roughnessMap: wr, roughness: 0.8, color: new T.Color(0x8a8a8a).convertSRGBToLinear(), envMapIntensity: 0.4 }));
-  floor.rotation.x = -Math.PI / 2; floor.receiveShadow = true; scene.add(floor);
-  const cg = new T.PlaneGeometry(9, 4.5, 360, 1), cp = cg.attributes.position;
-  for (let i = 0; i < cp.count; i++) { const xx = cp.getX(i); cp.setZ(i, Math.sin(xx * 5.3) * 0.07 + Math.sin(xx * 11.7 + 1) * 0.03); }
-  cg.computeVertexNormals();
-  const curtain = new T.Mesh(cg, new T.MeshPhysicalMaterial({ color: new T.Color(0x170408).convertSRGBToLinear(), roughness: 0.95, sheen: 1, sheenRoughness: 0.5, sheenColor: new T.Color(0x5a1420).convertSRGBToLinear(), envMapIntensity: 0.3 }));
-  curtain.position.set(0, 2.2, -2.6); curtain.receiveShadow = true; scene.add(curtain);
-
-  // light: a warm spot from the front left, a rim light from behind on the right, a little fill
-  const key = new T.SpotLight(0xffd2a0, 1.6, 0, 0.3, 0.6, 0); key.position.set(-1.7, 3.4, 2.6); key.target.position.set(0.05, 0.45, 0);
-  key.castShadow = true; key.shadow.mapSize.set(2048, 2048); key.shadow.camera.near = 1.5; key.shadow.camera.far = 8; key.shadow.bias = -0.0003; key.shadow.normalBias = 0.012; key.shadow.radius = 3;
-  const rim = new T.SpotLight(0xffbe86, 1.6, 0, 0.22, 0.6, 0); rim.position.set(1.8, 2.6, -2.0); rim.target.position.set(0, 0.5, 0);
-  const rim2 = new T.SpotLight(0xff9a70, 0.7, 0, 0.25, 0.7, 0); rim2.position.set(-2.2, 1.2, -1.6); rim2.target.position.set(0, 0.4, 0);
-  scene.add(key, key.target, rim, rim.target, rim2, rim2.target, new T.HemisphereLight(0x3a2520, 0x080404, 0.2));
-
-  // the cloth
-  const cl = flCloth(), meshes = [];
-  const silk = (col) => { const t = flSilkTex(col), m = tex(t.c, true), a = tex(t.a), mr = tex(t.m);
-    return new T.MeshPhysicalMaterial({ map: m, alphaMap: a, sheenColorMap: tex(t.sh), alphaTest: 0.5, roughnessMap: mr, metalnessMap: mr, roughness: 1, metalness: 1, sheen: 1, sheenRoughness: 0.4,
-      sheenColor: new T.Color(col).convertSRGBToLinear().multiplyScalar(1.5), side: T.DoubleSide, envMapIntensity: 0.6 }); };
-  const BURG = "#3F0A15", CRIM = "#62192A";
-  const grid = (nu, nv, idx, uRep, mat) => {
-    const nV = (nu + 1) * nv, pos = new Float32Array(nV * 3), uv = new Float32Array(nV * 2), map = new Int32Array(nV), ind = [];
-    for (let v = 0; v < nv; v++) for (let u = 0; u <= nu; u++) { const k = v * (nu + 1) + u; map[k] = idx(u % nu, v); uv[k * 2] = u / nu * uRep; uv[k * 2 + 1] = 1 - v / (nv - 1); }
-    for (let v = 0; v < nv - 1; v++) for (let u = 0; u < nu; u++) { const a = v * (nu + 1) + u, b = a + 1, c = a + nu + 1, d = c + 1; ind.push(a, c, b, b, c, d); }
-    const geo = new T.BufferGeometry(); geo.setAttribute("position", new T.BufferAttribute(pos, 3)); geo.setAttribute("uv", new T.BufferAttribute(uv, 2)); geo.setIndex(ind);
-    const mesh = new T.Mesh(geo, mat); mesh.castShadow = mesh.receiveShadow = true; mesh.frustumCulled = false; scene.add(mesh);
-    meshes.push({ geo, map, nu }); return mesh;
-  };
-  const skirtMat = silk(BURG);
-  skirtMat.alphaMap = null; skirtMat.sheenColorMap = null; skirtMat.alphaTest = 0; skirtMat.map = tex((() => { const c = casaCv(1024, 64), x = c.getContext("2d"); x.fillStyle = BURG; x.fillRect(0, 0, 1024, 64);
-    // the panels of the fitted skirt, joined by seams
-    for (let i = 0; i < 8; i++) { x.fillStyle = "rgba(10,0,2,0.55)"; x.fillRect(i * 128, 0, 2, 64); x.fillStyle = "rgba(255,180,180,0.08)"; x.fillRect(i * 128 + 2, 0, 2, 64); } return c; })(), true);
-  skirtMat.roughnessMap = skirtMat.metalnessMap = null; skirtMat.roughness = 0.6; skirtMat.metalness = 0;
-  grid(FL_NU, FL_NV, (u, v) => cl.base + v * FL_NU + u, 1, skirtMat);
-  const mats = [silk(CRIM), silk(BURG)];
-  cl.tiers.forEach((Tr, k) => grid(FL_VU, FL_VV, (u, j) => Tr.V(u, j), FL_REP, mats[k % 2]));
-
-  // the fan
-  const fan = new T.Group(); scene.add(fan);
-  const r1 = 0.105, r2 = 0.245, span = 2.9, NR = 15, FC = (NR - 1) * 2, FR = 7, ft = flFanTex(r2, r1, span);
-  const fpos = new Float32Array((FC + 1) * FR * 3), fuv = new Float32Array((FC + 1) * FR * 2), fi = [];
-  for (let j = 0; j < FR; j++) for (let c = 0; c <= FC; c++) { const k = j * (FC + 1) + c, rad = r1 + (r2 - r1) * j / (FR - 1), a = -span / 2 + span * c / FC, [uu, vv] = ft.uv(rad, a); fuv[k * 2] = uu; fuv[k * 2 + 1] = vv; }
-  for (let j = 0; j < FR - 1; j++) for (let c = 0; c < FC; c++) { const a = j * (FC + 1) + c, b = a + 1, d = a + FC + 1, e = d + 1; fi.push(a, b, d, b, e, d); }
-  const fgeo = new T.BufferGeometry(); fgeo.setAttribute("position", new T.BufferAttribute(fpos, 3)); fgeo.setAttribute("uv", new T.BufferAttribute(fuv, 2)); fgeo.setIndex(fi);
-  const fmap = new T.CanvasTexture(ft.c); fmap.encoding = T.sRGBEncoding; fmap.anisotropy = aniso;
-  const leafM = new T.Mesh(fgeo, new T.MeshPhysicalMaterial({ map: fmap, roughness: 0.55, sheen: 0.6, sheenRoughness: 0.4, sheenColor: new T.Color(0x9a9080), side: T.DoubleSide, envMapIntensity: 0.7 }));
-  leafM.castShadow = leafM.receiveShadow = true; fan.add(leafM);
-  const lacquer = new T.MeshPhysicalMaterial({ color: new T.Color(0x0b0706).convertSRGBToLinear(), roughness: 0.3, clearcoat: 0.7, clearcoatRoughness: 0.2, envMapIntensity: 0.5 });
-  const gilt = new T.MeshStandardMaterial({ color: new T.Color(0xc8a050).convertSRGBToLinear(), metalness: 1, roughness: 0.35, envMapIntensity: 1 });
-  const ribs = [];
-  for (let i = 0; i < NR; i++) { const guard = i === 0 || i === NR - 1, L = r2 + (guard ? 0.012 : 0.004);
-    const m = new T.Mesh(new T.BoxGeometry(guard ? 0.014 : 0.008, L, guard ? 0.005 : 0.0025), guard ? gilt : lacquer); m.geometry.translate(0, L / 2, 0);
-    m.castShadow = true; fan.add(m); ribs.push(m); }
-  const pin = new T.Mesh(new T.CylinderGeometry(0.008, 0.008, 0.018, 20), gilt); pin.rotation.x = Math.PI / 2; fan.add(pin);
-
-  const cam = new T.PerspectiveCamera(20, 1.45, 0.1, 30); cam.position.set(0, 0.42, 2.55); cam.lookAt(0, 0.39, 0);
-  Object.assign(FLA, { r, scene, cam, cl, meshes, fan, fgeo, ribs, fdim: { r1, r2, span, NR, FC, FR }, ready: true });
-  flReset();
-}
-
-// where the unseen body is: hips swaying, turning, a step
-function flBody(t) {
-  return { x: fla.sway.x, y: -0.012 * S.bass, yaw: fla.yaw.x + fla.spin, roll: -fla.sway.x * 0.9, k0: fla.knee[0], k1: fla.knee[1] };
-}
-function flPinned(bd, cl) {
-  const { X } = cl, cy = Math.cos(bd.yaw), sy = Math.sin(bd.yaw), cr = Math.cos(bd.roll), sr = Math.sin(bd.roll);
-  for (let v = 0; v < FL_PIN; v++) {
-    const y = 1.12 - v * (0.57 / (FL_PIN - 1)), [rx, rz] = flProfile(y);
-    for (let u = 0; u < FL_NU; u++) { const a = u / FL_NU * TAU, lx = Math.sin(a) * rx, lz = Math.cos(a) * rz, ly = y - 1.0;
-      // roll about the hips (in the body's side-to-side plane), then yaw about the vertical
-      const rx2 = lx * cr - ly * sr, ry2 = lx * sr + ly * cr + 1.0;
-      const i = (cl.base + v * FL_NU + u) * 3; X[i] = bd.x + rx2 * cy + lz * sy; X[i + 1] = ry2 + bd.y; X[i + 2] = -rx2 * sy + lz * cy; }
-  }
-  cl.tiers.forEach(T => { if (T.row < FL_PIN) for (let u = 0; u < FL_VU; u++) {
-    const pu = u * FL_NU / FL_VU, a = Math.floor(pu), wb = pu - a, ia = (cl.base + T.row * FL_NU + a) * 3, ib = (cl.base + T.row * FL_NU + (a + 1) % FL_NU) * 3, k = T.V(u, 0) * 3;
-    for (let d = 0; d < 3; d++) X[k + d] = X[ia + d] * (1 - wb) + X[ib + d] * wb; } });
-}
-function flStep(cl, bd, h, t) {
-  const { X, O, W, ci, cr, ck, A, n, under, lift, N } = cl;
-  const cy = Math.cos(bd.yaw), sy = Math.sin(bd.yaw);
-  const air = 0.6 + S.mid * 2 + S.high;
-  // move: Verlet, with gravity, air resistance against the cloth, and a soft stir of air
-  for (let p = 0; p < n; p++) {
-    if (W[p] === 0) continue;
-    const i = p * 3; let vx = (X[i] - O[i]) * 0.996, vy = (X[i + 1] - O[i + 1]) * 0.996, vz = (X[i + 2] - O[i + 2]) * 0.996;
-    const vn = (vx * N[i] + vy * N[i + 1] + vz * N[i + 2]) * 0.06;        // drag acts across the cloth, not along it
-    vx -= N[i] * vn; vy -= N[i + 1] * vn; vz -= N[i + 2] * vn;
-    const wx = Math.sin(X[i + 1] * 7.3 + t * 1.1 + X[i + 2] * 3.1) * Math.sin(t * 0.37 + X[i] * 2.3) * air * 0.5, wz = Math.sin(X[i + 1] * 6.1 - t * 0.9 + X[i] * 2.7) * Math.sin(t * 0.29 + X[i + 2] * 2.9) * air * 0.5;
-    O[i] = X[i]; O[i + 1] = X[i + 1]; O[i + 2] = X[i + 2];
-    X[i] += vx + wx * h * h; X[i + 1] += vy - 9.8 * h * h; X[i + 2] += vz + wz * h * h;
-  }
-  for (let it = 0; it < 6; it++) {
-    for (let m = 0, M = cr.length; m < M; m++) {
-      const a = ci[m * 2], b = ci[m * 2 + 1], wa = W[a], wb = W[b], ws = wa + wb; if (ws === 0) continue;
-      const ia = a * 3, ib = b * 3, dx = X[ib] - X[ia], dy = X[ib + 1] - X[ia + 1], dz = X[ib + 2] - X[ia + 2], d = Math.sqrt(dx * dx + dy * dy + dz * dz) || 1e-6;
-      const f = (d - cr[m]) / d * ck[m] / ws;
-      X[ia] += dx * f * wa; X[ia + 1] += dy * f * wa; X[ia + 2] += dz * f * wa; X[ib] -= dx * f * wb; X[ib + 1] -= dy * f * wb; X[ib + 2] -= dz * f * wb;
-    }
-    // the seams: each flounce is sewn to the skirt, and pulls on it
-    for (const [p, a, b, wb] of A) { if (W[p] === 0) continue;
-      const ip = p * 3, ia = a * 3, ib = b * 3, la = W[a] ? 0.4 : 0;
-      for (let d = 0; d < 3; d++) { const tgt = X[ia + d] * (1 - wb) + X[ib + d] * wb, e = tgt - X[ip + d]; X[ip + d] += e * (1 - la); X[ia + d] -= e * la * (1 - wb); X[ib + d] -= e * la * wb; } }
-  }
-  // collisions: the floor, the legs, and each flounce stays outside the skirt beneath it
-  const legs = [0, 1].map(s => { const sx = s ? 0.085 : -0.085, k = s ? bd.k1 : bd.k0;
-    return [[sx, 0.86, 0], [sx * 0.95, 0.5 + k * 0.05, 0.03 + k * 0.16], [sx * 0.9, 0.07 + k * 0.1, k * 0.06]]; });
-  // how far out the skirt reaches in each direction, ring by ring (binned by angle, as the skirt turns)
-  const R = cl.R || (cl.R = new Float32Array(FL_NV * FL_NU)); R.fill(0);
-  for (let v = 0; v < FL_NV; v++) {
-    for (let u = 0; u < FL_NU; u++) { const i = (cl.base + v * FL_NU + u) * 3, lx = X[i] - bd.x, lz = X[i + 2];
-      const bin = ((Math.floor(Math.atan2(lx, lz) / TAU * FL_NU) % FL_NU) + FL_NU) % FL_NU, rr = Math.hypot(lx, lz); if (rr > R[v * FL_NU + bin]) R[v * FL_NU + bin] = rr; }
-    for (let pass = 0; pass < 2; pass++) for (let u = 0; u < FL_NU; u++) { const k = v * FL_NU + u; if (R[k] === 0) R[k] = Math.max(R[v * FL_NU + (u + 1) % FL_NU], R[v * FL_NU + (u + FL_NU - 1) % FL_NU]); }
-  }
+function silStep(cl, h) {
+  const { X, O, W, K, N, ci, cr, ck, n } = cl, w = [0, 0, 0];
   for (let p = 0; p < n; p++) {
     if (W[p] === 0) continue;
     const i = p * 3;
-    if (X[i + 1] < 0.004) X[i + 1] = 0.004;
-    let lx = X[i] - bd.x, lz = X[i + 2];
-    const bx = lx * cy - lz * sy, bz = lx * sy + lz * cy, by = X[i + 1] - bd.y;       // into the body's frame
-    let px = bx, pz = bz, moved = false;
-    for (const L of legs) for (let s = 0; s < 2; s++) {
-      const A0 = L[s], B0 = L[s + 1], rad = s ? 0.062 : 0.08, ex = B0[0] - A0[0], ey = B0[1] - A0[1], ez = B0[2] - A0[2];
-      const q = Math.max(0, Math.min(1, ((px - A0[0]) * ex + (by - A0[1]) * ey + (pz - A0[2]) * ez) / (ex * ex + ey * ey + ez * ez)));
-      const cx = A0[0] + ex * q, cyy = A0[1] + ey * q, cz = A0[2] + ez * q, dx = px - cx, dy = by - cyy, dz = pz - cz, d = Math.sqrt(dx * dx + dy * dy + dz * dz);
-      if (d < rad && d > 1e-6) { const f = rad / d; px = cx + dx * f; pz = cz + dz * f; moved = true; }
-    }
-    if (under[p] >= 0) {
-      const rr = Math.hypot(px, pz), u = ((Math.floor(Math.atan2(lx, lz) / TAU * FL_NU) % FL_NU) + FL_NU) % FL_NU;
-      const need = R[under[p] * FL_NU + u] + lift[p];
-      if (rr < need && rr > 1e-5) { px *= need / rr; pz *= need / rr; moved = true; }
-    }
-    if (moved) { X[i] = bd.x + px * cy + pz * sy; X[i + 2] = -px * sy + pz * cy; }
+    let vx = X[i] - O[i], vy = X[i + 1] - O[i + 1], vz = X[i + 2] - O[i + 2];
+    if (p % 3 === 0) silWind(X[i], X[i + 1], X[i + 2], w);           // the air varies slowly in space: sample it sparsely
+    // air resistance across the cloth (relative to the moving air), a little along it
+    const rx = w[0] * h - vx, ry = w[1] * h - vy, rz = w[2] * h - vz, rn = rx * N[i] + ry * N[i + 1] + rz * N[i + 2];
+    const k = K[p];
+    vx += N[i] * rn * k + rx * 0.006; vy += N[i + 1] * rn * k + ry * 0.006; vz += N[i + 2] * rn * k + rz * 0.006;
+    O[i] = X[i]; O[i + 1] = X[i + 1]; O[i + 2] = X[i + 2];
+    X[i] += vx * 0.998; X[i + 1] += vy * 0.998 - 9.8 * h * h; X[i + 2] += vz * 0.998;
   }
+  for (let it = 0; it < 6; it++) for (let m = 0, M = cr.length; m < M; m++) {
+    const a = ci[m * 2], b = ci[m * 2 + 1], wa = W[a], wb = W[b], ws = wa + wb; if (ws === 0) continue;
+    const ia = a * 3, ib = b * 3, dx = X[ib] - X[ia], dy = X[ib + 1] - X[ia + 1], dz = X[ib + 2] - X[ia + 2], d = Math.sqrt(dx * dx + dy * dy + dz * dz) || 1e-6;
+    const f = (d - cr[m]) / d * ck[m] / ws;
+    X[ia] += dx * f * wa; X[ia + 1] += dy * f * wa; X[ia + 2] += dz * f * wa; X[ib] -= dx * f * wb; X[ib + 1] -= dy * f * wb; X[ib + 2] -= dz * f * wb;
+  }
+  // the floor: silk that reaches it slides and settles
+  for (let p = 0; p < n; p++) { const i = p * 3; if (X[i + 1] < 0.004) { X[i + 1] = 0.004; O[i] = X[i] - (X[i] - O[i]) * 0.5; O[i + 2] = X[i + 2] - (X[i + 2] - O[i + 2]) * 0.5; O[i + 1] = X[i + 1]; } }
 }
-function flReset() {
-  const cl = FLA.cl = flCloth();
-  Object.assign(fla, { yaw: { x: 0, v: 0 }, sway: { x: 0, v: 0 }, spin: 0, spinV: 0, spinGoal: 0, knee: [0, 0], fan: 0.5, fanV: 0, fanGoal: 0.5, wrist: { x: 0, v: 0 } });
-  const bd = flBody(0); flPinned(bd, cl);
-  for (let s = 0; s < 180; s++) { flStep(cl, bd, 1 / 120, s / 120); if (s % 15 === 0) flNormals(cl); }     // let it settle into its folds
-  cl.O.set(cl.X);
-}
-function flNormals(cl) {
-  FLA.meshes.forEach(M => { const pos = M.geo.attributes.position.array;
-    for (let k = 0; k < M.map.length; k++) { const p = M.map[k] * 3; pos[k * 3] = cl.X[p]; pos[k * 3 + 1] = cl.X[p + 1]; pos[k * 3 + 2] = cl.X[p + 2]; }
+function silNormals(cl) {
+  SIL.meshes.forEach(M => { const pos = M.geo.attributes.position.array, X = cl.X;
+    pos.set(X.subarray(M.t0 * 3, (M.t0 + M.count) * 3));
     M.geo.attributes.position.needsUpdate = true; M.geo.computeVertexNormals();
-    const nr = M.geo.attributes.normal.array, nu = M.nu, rows = M.map.length / (nu + 1);
-    for (let v = 0; v < rows; v++) { const a = v * (nu + 1) * 3, b = (v * (nu + 1) + nu) * 3;   // close the seam where the cloth wraps round
-      for (let d = 0; d < 3; d++) { const m = (nr[a + d] + nr[b + d]) / 2; nr[a + d] = nr[b + d] = m; } }
-    for (let k = 0; k < M.map.length; k++) { const p = M.map[k] * 3; cl.N[p] = nr[k * 3]; cl.N[p + 1] = nr[k * 3 + 1]; cl.N[p + 2] = nr[k * 3 + 2]; }
-  });
+    cl.N.set(M.geo.attributes.normal.array, M.t0 * 3); });
 }
-function flFan(t, dt, bd) {
-  const { r1, r2, span, NR, FC, FR } = FLA.fdim, A = Math.max(0.12, Math.min(span, fla.fan));
-  const pos = FLA.fgeo.attributes.position.array, full = span / FC * 1.18;
-  for (let j = 0; j < FR; j++) { const rad = r1 + (r2 - r1) * j / (FR - 1);
-    for (let c = 0; c <= FC; c++) { const a = -A / 2 + A * c / FC, k = (j * (FC + 1) + c) * 3, half = A / FC;
-      const z = c % 2 ? (c % 4 === 1 ? 1 : -1) * rad * Math.sqrt(Math.max(0, full * full - half * half)) * 0.5 : 0;
-      pos[k] = Math.sin(a) * rad; pos[k + 1] = Math.cos(a) * rad; pos[k + 2] = z; } }
-  FLA.fgeo.attributes.position.needsUpdate = true; FLA.fgeo.computeVertexNormals();
-  FLA.ribs.forEach((m, i) => { const a = -A / 2 + A * i / (NR - 1); m.rotation.set(0, 0, -a); m.position.set(0, 0, i === 0 || i === NR - 1 ? 0.0035 : -0.003 - i * 0.0002); });   // the sticks behind the leaf, the gilded guards over it
-  // the hand: low at the right of the hips, following them, the wrist turning with each flick
-  const f = FLA.fan;
-  f.position.set(0.3 + bd.x * 0.7, 0.47 + Math.sin(t * 0.8) * 0.015 + fla.wrist.x * 0.02, 0.32);
-  f.rotation.set(-0.15 + fla.wrist.x * 0.12, -0.3 + Math.sin(t * 0.5) * 0.06, -0.35 + fla.wrist.x * 0.3);
+// the fabric: dyed by hand, so the colour varies a little; a fine crêpe weave in the surface
+function silTex(col, seed, sheer) {
+  const S2 = 1024, c = casaCv(S2, S2), x = c.getContext("2d"), r = seeded(seed);
+  x.fillStyle = col; x.fillRect(0, 0, S2, S2);
+  for (let i = 0; i < 0; i++) { const g = x.createRadialGradient(r() * S2, r() * S2, 0, r() * S2, r() * S2, 150 + r() * 300);
+    const d = r() < 0.5; g.addColorStop(0, d ? "rgba(40,0,8,0.05)" : "rgba(200,60,60,0.035)"); g.addColorStop(1, "rgba(0,0,0,0)"); x.fillStyle = g; x.fillRect(0, 0, S2, S2); }
+  for (let i = 0; i < 1400; i++) { x.fillStyle = `rgba(${r() < 0.5 ? "30,0,6" : "230,140,140"},${0.03 + r() * 0.04})`; const v = r() < 0.5; x.fillRect(r() * S2, r() * S2, v ? 1 : 20 + r() * 120, v ? 20 + r() * 120 : 1); }
+  const hc = casaCv(512, 512), y = hc.getContext("2d"), img = y.createImageData(512, 512), d = img.data;
+  for (let j = 0; j < 512; j++) for (let i = 0; i < 512; i++) {
+    // a crêpe: warp and weft threads with a twist that makes the surface pebbled
+    const wv = Math.sin(i * Math.PI / 2) * 0.5 + 0.5, wf = Math.sin(j * Math.PI / 2) * 0.5 + 0.5, cr = hash2(i >> 1, j >> 1);
+    const v = (sheer ? 0.5 + (wv * wf - 0.25) * 0.6 : 0.45 + (wv + wf) * 0.15 + cr * 0.25) * 255, k = (j * 512 + i) * 4; d[k] = d[k + 1] = d[k + 2] = v; d[k + 3] = 255; }
+  y.putImageData(img, 0, 0);
+  return { c, nrm: casaNormal(hc, sheer ? 0.6 : 1.1) };
+}
+function silBackdrop() {
+  const c = casaCv(1024, 1024), x = c.getContext("2d"), r = seeded(77);
+  x.fillStyle = "#CFC4B4"; x.fillRect(0, 0, 1024, 1024);
+  for (let i = 0; i < 40; i++) { const g = x.createRadialGradient(r() * 1024, r() * 1024, 0, r() * 1024, r() * 1024, 200 + r() * 400);
+    g.addColorStop(0, r() < 0.5 ? "rgba(120,100,80,0.05)" : "rgba(255,245,230,0.05)"); g.addColorStop(1, "rgba(0,0,0,0)"); x.fillStyle = g; x.fillRect(0, 0, 1024, 1024); }
+  return c;
+}
+function silBuild() {
+  const T = THREE, scene = new T.Scene();
+  const r = new T.WebGLRenderer({ antialias: true, alpha: false, powerPreference: "high-performance" });
+  r.setPixelRatio(1); r.shadowMap.enabled = true; r.shadowMap.type = T.PCFSoftShadowMap;
+  r.outputEncoding = T.sRGBEncoding; r.toneMapping = T.ACESFilmicToneMapping; r.toneMappingExposure = 0.95;
+  const aniso = r.capabilities.getMaxAnisotropy(), lc = h => new T.Color(h).convertSRGBToLinear();
+  const BG = lc(0xC9BDAC);
+  scene.background = BG; scene.fog = new T.Fog(BG, 5.5, 13);
+  // a soft warm room for the sheen to pick up
+  const env = new T.Scene();
+  env.add(new T.Mesh(new T.SphereGeometry(20, 32, 16), new T.MeshBasicMaterial({ color: 0x6a5e52, side: T.BackSide })));
+  const sb = (x, y, z, w, h, c) => { const m = new T.Mesh(new T.PlaneGeometry(w, h), new T.MeshBasicMaterial({ color: c, side: T.DoubleSide })); m.position.set(x, y, z); m.lookAt(0, 1.2, 0); env.add(m); };
+  sb(-6, 8, 7, 6, 4, 0xfff0dc); sb(5, 6, -8, 4, 6, 0xffd9b0);
+  scene.environment = new T.PMREMGenerator(r).fromScene(env, 0.04).texture;
+  // the gallery: a seamless backdrop, floor curving up into the wall
+  const shape = [];
+  for (let i = 0; i <= 24; i++) { const a = i / 24 * Math.PI / 2; shape.push([Math.sin(a) * 1.2, 1.2 - Math.cos(a) * 1.2]); }
+  const cyc = new T.BufferGeometry(), cv = [], cuv = [], cix = [], prof = [[0, 0, 6]].concat(shape.map(([s, y]) => [y, 0, -2.4 - s])).concat([[6, 0, -3.6]]);
+  prof.forEach(([y, , z], j) => { for (let i = 0; i <= 40; i++) { const x = -7 + i * 14 / 40; cv.push(x, y, z); cuv.push(i / 40 * 3, j / prof.length * 3); } });
+  for (let j = 0; j < prof.length - 1; j++) for (let i = 0; i < 40; i++) { const a = j * 41 + i, b = a + 1, c = a + 41, d = c + 1; cix.push(a, b, c, b, d, c); }
+  cyc.setAttribute("position", new T.Float32BufferAttribute(cv, 3)); cyc.setAttribute("uv", new T.Float32BufferAttribute(cuv, 2)); cyc.setIndex(cix); cyc.computeVertexNormals();
+  const bt = new T.CanvasTexture(silBackdrop()); bt.encoding = T.sRGBEncoding; bt.wrapS = bt.wrapT = T.RepeatWrapping;
+  const back = new T.Mesh(cyc, new T.MeshStandardMaterial({ map: bt, roughness: 1, envMapIntensity: 0.25 })); back.receiveShadow = true; scene.add(back);
+  // light: a large warm key from the upper left that throws soft shadows, a stronger backlight from the upper right
+  // that glows through the cloth, and warm fill from the room
+  const key = new T.DirectionalLight(0xffe6c8, 1.9); key.position.set(-3.2, 5.5, 4.2); key.target.position.set(0, 1, 0);
+  key.castShadow = true; key.shadow.mapSize.set(2048, 2048); Object.assign(key.shadow.camera, { left: -3, right: 3, top: 3.5, bottom: -1.5, near: 1, far: 16 });
+  key.shadow.bias = -0.0004; key.shadow.normalBias = 0.02; key.shadow.radius = 6;
+  const backL = new T.DirectionalLight(0xffc896, 1.6); backL.position.set(2.6, 3.6, -4.5); backL.target.position.set(0, 1.2, 0);
+  scene.add(key, key.target, backL, backL.target, new T.HemisphereLight(0xfff1e0, 0x8a7460, 0.38));
+  // the cloth materials: matte, the light passing through the thin fabric from behind
+  const fabric = (col, seed, sheer) => { const t = silTex(col, seed, sheer), map = new T.CanvasTexture(t.c), nm = new T.CanvasTexture(t.nrm);
+    map.encoding = T.sRGBEncoding; [map, nm].forEach(q => { q.wrapS = q.wrapT = T.RepeatWrapping; q.anisotropy = aniso; });
+    const m = new T.MeshPhysicalMaterial({ map, normalMap: nm, normalScale: new T.Vector2(0.35, 0.35), roughness: sheer ? 0.6 : 0.72, sheen: 0.5, sheenRoughness: 0.6,
+      sheenColor: lc(col).multiplyScalar(1.3), side: T.DoubleSide, envMapIntensity: 0.35, transparent: !!sheer, opacity: sheer ? 0.78 : 1 });
+    const trans = lc(col).multiplyScalar(sheer ? 1.3 : 0.8);
+    m.onBeforeCompile = sh => { sh.uniforms.uTrans = { value: trans };
+      sh.fragmentShader = "uniform vec3 uTrans;\n" + sh.fragmentShader.replace("#include <lights_fragment_end>", `#include <lights_fragment_end>
+        #if NUM_DIR_LIGHTS > 0
+        for (int i = 0; i < NUM_DIR_LIGHTS; i++) { float bt = max(dot(-normal, directionalLights[i].direction), 0.); reflectedLight.directDiffuse += directionalLights[i].color * bt * uTrans * diffuseColor.rgb; }
+        #endif`); };
+    return m; };
+  const mats = [fabric("#510A17", 11, false), fabric("#6E1A25", 12, true)];
+  const cl = silCloth(), meshes = [];
+  cl.panels.forEach((pn, k) => {
+    const { cols, rows, Q } = pn, count = cols * rows, uv = new Float32Array(count * 2), ind = [];
+    for (let v = 0; v < rows; v++) for (let u = 0; u < cols; u++) { const i = v * cols + u; uv[i * 2] = u * Q.sp / 0.35; uv[i * 2 + 1] = v * Q.sp / 0.35; }
+    for (let v = 0; v < rows - 1; v++) for (let u = 0; u < cols - 1; u++) { const a = v * cols + u, b = a + 1, c = a + cols, d = c + 1; ind.push(a, c, b, b, c, d); }
+    const geo = new T.BufferGeometry(); geo.setAttribute("position", new T.BufferAttribute(new Float32Array(count * 3), 3)); geo.setAttribute("uv", new T.BufferAttribute(uv, 2)); geo.setIndex(ind);
+    const mesh = new T.Mesh(geo, mats[k]); mesh.castShadow = mesh.receiveShadow = true; mesh.frustumCulled = false; mesh.renderOrder = k; scene.add(mesh);
+    meshes.push({ geo, t0: pn.t0, count });
+  });
+  const cam = new T.PerspectiveCamera(30, 1.45, 0.1, 40); cam.position.set(0, 1.25, 5.0); cam.lookAt(0, 1.12, 0);
+  Object.assign(SIL, { r, scene, cam, meshes, ready: true, cl });
+  silReset();
+}
+function silReset() {
+  const cl = SIL.cl = silCloth(); 
+  Object.assign(sil, { E: 0, ph: 0, gust: [0, 0, 0], vort: 0, queue: [] });
+  silPin(cl);
+  for (let s = 0; s < 240; s++) { silStep(cl, 1 / 120); if (s % 10 === 0) silNormals(cl); }   // let it hang and settle into its folds
+  cl.O.set(cl.X); silNormals(cl);
+}
+function silMove(h) {
+  // the holds drift in slow arcs whose pace is the music's; each springs back from the sweeps
+  SIL.cl.panels.forEach((pn, k) => pn.holds.forEach((Hd, j) => { const a = Hd.a, H = Hd.home, ph = sil.ph + k * 1.7 + j * 2.3;
+    const tg = [H[0] + Math.sin(ph * 0.9) * 0.3 * (0.3 + sil.E), H[1] + Math.sin(ph * 0.55) * 0.05, H[2] + Math.sin(ph * 0.7 + 1) * 0.35 * (0.3 + sil.E)];
+    for (let d = 0; d < 3; d++) { a.v[d] += ((tg[d] - a.p[d]) * 5.5 - a.v[d] * 2.8) * h; a.p[d] += a.v[d] * h; } }));
+  const gd = Math.exp(-h * 1.6); sil.gust = sil.gust.map(q => q * gd); sil.vort *= Math.exp(-h * 1.1);
 }
 function flamencoScene(t, dt, box) {
   if (typeof THREE === "undefined") return;
-  if (!FLA.ready) flBuild();
-  if (t - fla.lastT > 1.5) flReset();
-  fla.lastT = t; fla.now = t;
+  if (!SIL.ready) silBuild();
+  if (t - sil.lastT > 1.5) silReset();
+  sil.lastT = t; sil.now = t;
   const h = box.h, w = Math.min(box.w, h * 1.45), x0 = Math.round((box.x + (box.w - w) / 2) * DPR) / DPR, y0 = box.y;
   const k = Math.min(DPR, Math.sqrt(7e6 / (w * h))), pw = Math.round(w * k), ph = Math.round(h * k);
-  if (FLA.pw !== pw || FLA.ph !== ph) { FLA.pw = pw; FLA.ph = ph; FLA.r.setSize(pw, ph, false); FLA.cam.aspect = pw / ph; FLA.cam.updateProjectionMatrix(); }
+  if (SIL.pw !== pw || SIL.ph !== ph) { SIL.pw = pw; SIL.ph = ph; SIL.r.setSize(pw, ph, false); SIL.cam.aspect = pw / ph; SIL.cam.updateProjectionMatrix(); }
   dt = Math.min(dt, 1 / 20);
-  // the cloth steps at 120 Hz at most; a slow frame slows the whole dance down rather than destabilising the silk
-  const steps = Math.max(1, Math.min(3, Math.round(dt * 120))), hs = Math.min(dt / steps, 1 / 110); dt = steps * hs;
-  const energy = Math.min(1, S.bass * 0.5 + S.mid * 0.5);
-  // the body: a slow sway marking the compás, louder music swings it wider
-  fla.sway.v += ((Math.sin(t * 1.1) * 0.025 * (0.4 + energy) - fla.sway.x) * 26 - fla.sway.v * 6.5) * dt; fla.sway.x += fla.sway.v * dt;
-  fla.yaw.v += ((Math.sin(t * 0.45) * 0.3 * (0.3 + energy) - fla.yaw.x) * 14 - fla.yaw.v * 5) * dt; fla.yaw.x += fla.yaw.v * dt;
-  fla.spinV += ((fla.spinGoal - fla.spin) * 9 - fla.spinV * 5.2) * dt; fla.spin += fla.spinV * dt;
-  fla.knee = fla.knee.map(q => q * Math.pow(0.08, dt));
-  fla.fanGoal += (0.6 + S.mid * 0.9 - fla.fanGoal) * Math.min(1, dt * 0.7);
-  fla.fanV += ((fla.fanGoal - fla.fan) * 60 - fla.fanV * 11) * dt; fla.fan += fla.fanV * dt;
-  fla.wrist.v += (-fla.wrist.x * 30 - fla.wrist.v * 6) * dt; fla.wrist.x += fla.wrist.v * dt;
-  const cl = FLA.cl, bd = flBody(t);
-  const b0 = FLA.bd || bd; FLA.bd = bd;
-  for (let s = 0; s < steps; s++) { const q = (s + 1) / steps, bi = {};
-    for (const key in bd) bi[key] = b0[key] + (bd[key] - b0[key]) * q;
-    flPinned(bi, cl); flStep(cl, bi, hs, t); }
-  flNormals(cl);
-  flFan(t, dt, bd);
-  FLA.r.render(FLA.scene, FLA.cam);
-  g.drawImage(FLA.r.domElement, x0, y0, w, h);
+  // the cloth steps at 120 Hz at most; a slow frame slows the whole piece down rather than destabilising the silk
+  const steps = Math.max(1, Math.min(3, Math.round(dt * 120))), hs = Math.min(dt / steps, 1 / 110);
+  const energy = Math.min(1, S.bass * 0.45 + S.mid * 0.45 + S.high * 0.2);
+  sil.E += (energy - sil.E) * Math.min(1, dt * 1.5);
+  sil.ph += steps * hs * (0.1 + sil.E * 0.7);
+  // a sweep reaches the second length of fabric a moment after the first
+  sil.queue = sil.queue.filter(q => { if (t >= q.at) { const a = SIL.cl.panels[q.k].holds[q.j].a; a.v[0] += q.vx; a.v[1] += q.vy; a.v[2] += q.vz; return false; } return true; });
+  for (let s = 0; s < steps; s++) { silMove(hs); silPin(SIL.cl); silStep(SIL.cl, hs); }
+  silNormals(SIL.cl);
+  SIL.r.render(SIL.scene, SIL.cam);
+  g.drawImage(SIL.r.domElement, x0, y0, w, h);
 }
 function flamencoBeat() {
-  const s = Math.min(1, 0.2 + S.bass * 0.9 + S.pulse * 0.2);
-  fla.side *= -1;
-  fla.sway.v += fla.side * (0.25 + s * 0.4);                 // the hip answers the beat
-  fla.yaw.v += fla.side * (0.45 + s * 0.9);                   // and turns with it
-  fla.knee[fla.side > 0 ? 1 : 0] = Math.min(1, 0.4 + s * 0.6);
-  fla.fanGoal = Math.max(fla.fanGoal, 1.6 + s * 1.25); fla.wrist.v += fla.side * (2 + s * 3);
-  if (s > 0.7 && fla.now - fla.lastSpin > 6) { fla.spinGoal += fla.side * TAU; fla.lastSpin = fla.now; }   // a full turn
+  if (!SIL.ready) return;
+  const s = Math.min(1, 0.15 + S.bass * 0.9 + S.pulse * 0.2), t = sil.now;
+  sil.side *= -1; sil.n++;
+  const dz = ((sil.n % 3) - 1) * 0.5;
+  // a sweep: the holds swing across, the fabric twists, and the air follows the sweep
+  // one hand leads each sweep and the other answers; the strongest beats move all four, the chiffon a moment later
+  const lead = sil.n % 2, big = s > 0.6;
+  SIL.cl.panels.forEach((pn, k) => { if (k === 1 && !big && sil.n % 3) return;
+    pn.holds.forEach((H, j) => { const m = j === lead ? 1 : 0.45;
+      sil.queue.push({ k, j, at: t + k * 0.14 + (j === lead ? 0 : 0.09), vx: sil.side * (0.5 + s * 1.8) * m, vy: s * 0.3 * m, vz: dz * (0.4 + s) * m }); }); });
+  sil.gust[0] += sil.side * (0.6 + s * 2.4); sil.gust[2] += dz * s * 1.2; sil.gust[1] += s * 0.25;
+  if (s > 0.72 && t - sil.lastVort > 4) { sil.vort = 1; sil.lastVort = t; }    // the strongest beats: a rising spiral of air
 }
