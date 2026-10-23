@@ -368,6 +368,7 @@ function visBuild() {
     V.seed.set([a, b, c, d, s * Math.cos(th), u, s * Math.sin(th)], i * 7);
     V.size[i] = 0.75 + Math.pow(Math.random(), 4) * 0.7;
   }
+  V.restA = 0; V.restB = 1; V.blend = 0; V.restT = 0; V.ink = INK.slice();
   V.forms = []; V.ripples = []; V.E = 0; V.ex = 0; V.exv = 0; V.rot = 0; V.dragX = 0.18; V.dragY = 0; V.claim = 0; V.time = 0;
   const tmp = [0, 0, 0];
   for (let i = 0; i < N; i++) { ambient(i, 0, tmp); V.pos.set(tmp, i * 3); }
@@ -427,37 +428,99 @@ function ambientColour() {
     V.col[i * 3] = k ? INK[0] + w * 0.06 : 0.62; V.col[i * 3 + 1] = k ? INK[1] + w * 0.05 : 0.49; V.col[i * 3 + 2] = k ? INK[2] + w * 0.03 : 0.27;
   }
 }
-// The resting form: a slow trefoil knot whose tube swells and thins, warped so it flows rather than repeats.
+// The resting forms: closed curves the particles hold between notes. Every half minute or so one melts into the next.
+const RESTS = [
+  { ink: [0.165, 0.172, 0.165], f(u, o) { o[0] = (Math.sin(u) + 2 * Math.sin(2 * u)) * 0.42; o[1] = (Math.cos(u) - 2 * Math.cos(2 * u)) * 0.42; o[2] = -Math.sin(3 * u) * 0.55; } },     // trefoil knot
+  { ink: [0.15, 0.17, 0.27], f(u, o) { const r = 1 + 0.42 * Math.cos(5 * u); o[0] = r * Math.cos(2 * u) * 0.95; o[1] = 0.5 * Math.sin(5 * u); o[2] = r * Math.sin(2 * u) * 0.95; } }, // (2,5) torus knot
+  { ink: [0.25, 0.18, 0.14], f(u, o) { o[0] = Math.sin(3 * u + 0.5) * 1.3; o[1] = Math.sin(2 * u) * 1.05; o[2] = Math.sin(5 * u) * 0.6; } },                                           // Lissajous figure
+  { ink: [0.14, 0.21, 0.19], f(u, o) { o[0] = 1.45 * Math.sin(u); o[1] = 0.75 * Math.sin(2 * u); o[2] = 0.55 * Math.cos(3 * u); } }                                                    // infinity ribbon
+];
+const cA = [0, 0, 0], cB = [0, 0, 0];
 function ambient(i, t, out) {
   const S = V.seed, o = i * 7, a = S[o], d = S[o + 3];
   const u = a * Math.PI * 2 + t * 0.045;
-  let x = Math.sin(u) + 2 * Math.sin(2 * u), y = Math.cos(u) - 2 * Math.cos(2 * u), z = -Math.sin(3 * u);
+  RESTS[V.restA].f(u, cA);
+  let x = cA[0], y = cA[1], z = cA[2];
+  if (V.blend > 0) { RESTS[V.restB].f(u, cB); const w = V.blend; x += (cB[0] - x) * w; y += (cB[1] - y) * w; z += (cB[2] - z) * w; }
   const tube = (0.035 + 0.16 * d * d * d) * (1 + 0.5 * Math.sin(3 * u + t * 0.23));
-  x = x * 0.42 + S[o + 4] * tube; y = y * 0.42 + S[o + 5] * tube; z = z * 0.55 + S[o + 6] * tube;
-  const wx = 0.12 * Math.sin(1.3 * y + t * 0.21), wy = 0.16 * Math.sin(1.7 * z + t * 0.17), wz = 0.16 * Math.sin(1.1 * x + t * 0.19);
+  x += S[o + 4] * tube; y += S[o + 5] * tube; z += S[o + 6] * tube;
+  const wx = 0.12 * Math.sin(1.3 * y + t * 0.21), wy = 0.12 * Math.sin(1.7 * z + t * 0.17), wz = 0.12 * Math.sin(1.1 * x + t * 0.19);
   const k = (1 + V.ex) * (1 + 0.025 * Math.sin(t * 0.5));
   out[0] = (x + wx) * k; out[1] = (y + wy) * k * 0.92 - 0.05; out[2] = (z + wz) * k;
 }
-// A note's structure, in its own unit space. Each instrument has its own architecture.
+function restTick(dt) {
+  V.restT += dt;
+  if (V.blend === 0 && V.restT > 32) { V.restB = (V.restA + 1) % RESTS.length; V.blend = 0.0001; }
+  if (V.blend > 0) {
+    V.blend = Math.min(1, V.blend + dt / 7);
+    const e = V.blend * V.blend * (3 - 2 * V.blend), A = RESTS[V.restA].ink, B = RESTS[V.restB].ink;
+    for (let k = 0; k < 3; k++) V.ink[k] = A[k] + (B[k] - A[k]) * e;
+    if (V.blend >= 1) { V.restA = V.restB; V.blend = 0; V.restT = 0; }
+  }
+}
+// A note's structure, in its own unit space. Each instrument has three architectures; the note decides which.
+const SHAPES = {
+  piano: ["ring", "rings", "galaxy"],
+  strings: ["helix", "sheet", "eight"],
+  synth: ["lattice", "knot", "cube"],
+  musicbox: ["crown", "star", "seed"],
+  bass: ["vortex", "funnel", "column"]
+};
+// muted hues, one for each of the twelve notes: ochre, rust, terracotta, rose, plum, indigo, slate, teal, sage, olive, moss, umber
+const PC_COL = [[0.70, 0.52, 0.20], [0.62, 0.30, 0.20], [0.72, 0.38, 0.28], [0.70, 0.40, 0.45], [0.45, 0.25, 0.42], [0.25, 0.28, 0.52],
+  [0.30, 0.42, 0.60], [0.18, 0.47, 0.50], [0.38, 0.54, 0.40], [0.52, 0.52, 0.24], [0.30, 0.42, 0.24], [0.48, 0.33, 0.21]];
 function shape(kind, a, b, c, age, spin, out) {
   let x, y, z, th;
-  if (kind === "piano") {                       // a ring, like a struck bell's ripple
-    th = a * 6.2832 + spin * age; const ph = b * 6.2832, tw = 0.05 * c * c;
-    x = Math.cos(th) * (1 + tw * Math.cos(ph)); y = tw * Math.sin(ph) * 0.7; z = Math.sin(th) * (1 + tw * Math.cos(ph));
-  } else if (kind === "strings") {              // a long ribbon wound into a helix, rippling along its length
-    th = a * 6.2832 * 1.6 + spin * age; const rad = 0.5 + 0.5 * Math.sin(Math.PI * a), w = (b - 0.5) * 0.16;
-    x = (rad + w) * Math.cos(th); z = (rad + w) * Math.sin(th); y = (a - 0.5) * 1.7 + 0.12 * Math.sin(3 * th + age * 1.6) + (c - 0.5) * 0.02;
-  } else if (kind === "synth") {                // a lattice sphere: rings of latitude turning against each other
-    const band = Math.floor(b * 7), lat = ((band + 0.5) / 7 - 0.5) * Math.PI;
-    th = a * 6.2832 + spin * age * (band % 2 ? 1 : -1);
-    x = Math.cos(lat) * Math.cos(th); y = Math.sin(lat); z = Math.cos(lat) * Math.sin(th);
-    const j = (c - 0.5) * 0.012; x += j; y += j;
-  } else if (kind === "musicbox") {             // a small crown of petals
-    th = a * 6.2832 + spin * age; const rr = 0.3 + 0.7 * Math.pow(Math.abs(Math.cos(2.5 * th)), 0.6) * (0.55 + 0.45 * b);
-    x = rr * Math.cos(th); z = rr * Math.sin(th); y = 0.3 * Math.sin(5 * th) * b + (c - 0.5) * 0.06;
-  } else {                                      // bass: a dense, low vortex
-    const rr = Math.sqrt(a); th = b * 6.2832 + spin * age * 0.7 / (rr + 0.25);
-    x = rr * Math.cos(th); z = rr * Math.sin(th); y = (c - 0.5) * 0.16 * (1.1 - rr);
+  switch (kind) {
+    case "ring": {                                 // a ring, like a struck bell's ripple
+      th = a * 6.2832 + spin * age; const ph = b * 6.2832, tw = 0.05 * c * c;
+      x = Math.cos(th) * (1 + tw * Math.cos(ph)); y = tw * Math.sin(ph) * 0.7; z = Math.sin(th) * (1 + tw * Math.cos(ph)); break; }
+    case "rings": {                                // two rings crossing, like an armillary sphere
+      th = a * 6.2832 + spin * age; const r = 1 + (c - 0.5) * 0.04;
+      if (b < 0.5) { x = Math.cos(th) * r; y = (c - 0.5) * 0.03; z = Math.sin(th) * r; } else { x = Math.cos(th) * r * 0.82; y = Math.sin(th) * r * 0.82; z = (c - 0.5) * 0.03; } break; }
+    case "galaxy": {                               // three spiral arms, flat
+      const rr = Math.sqrt(a); th = rr * 6.2832 * 1.1 + Math.floor(b * 3) * 2.094 + spin * age * 0.6;
+      x = rr * Math.cos(th) + (c - 0.5) * 0.05; z = rr * Math.sin(th) + (b * 3 % 1 - 0.5) * 0.06; y = (c - 0.5) * 0.06 * (1 - rr); break; }
+    case "helix": {                                // a long ribbon wound into a helix, rippling along its length
+      th = a * 6.2832 * 1.6 + spin * age; const rad = 0.5 + 0.5 * Math.sin(Math.PI * a), w = (b - 0.5) * 0.16;
+      x = (rad + w) * Math.cos(th); z = (rad + w) * Math.sin(th); y = (a - 0.5) * 1.7 + 0.12 * Math.sin(3 * th + age * 1.6) + (c - 0.5) * 0.02; break; }
+    case "sheet": {                                // a sheet of silk lifting in a wave
+      x = (a - 0.5) * 2; z = (b - 0.5) * 1.1; y = 0.28 * Math.sin(3 * x + age * 2.2 * Math.sign(spin)) * Math.cos(2.4 * z + age * 0.9) + (c - 0.5) * 0.015; break; }
+    case "eight": {                                // a figure of eight drawn in the air
+      th = a * 6.2832 + spin * age * 0.5; const w = (b - 0.5) * 0.09;
+      x = Math.sin(th) * (1 + w); y = Math.sin(th) * Math.cos(th) * (1 + w) * 1.1; z = 0.35 * Math.cos(th) + (c - 0.5) * 0.04; break; }
+    case "lattice": {                              // a lattice sphere: rings of latitude turning against each other
+      const band = Math.floor(b * 7), lat = ((band + 0.5) / 7 - 0.5) * Math.PI;
+      th = a * 6.2832 + spin * age * (band % 2 ? 1 : -1);
+      x = Math.cos(lat) * Math.cos(th); y = Math.sin(lat); z = Math.cos(lat) * Math.sin(th);
+      const j = (c - 0.5) * 0.012; x += j; y += j; break; }
+    case "knot": {                                 // a (2,5) torus knot
+      const u = a * 6.2832 + spin * age * 0.3, r = 0.62 + 0.3 * Math.cos(5 * u), t2 = (b - 0.5) * 0.06;
+      x = r * Math.cos(2 * u) + t2; y = 0.3 * Math.sin(5 * u) + (c - 0.5) * 0.05; z = r * Math.sin(2 * u) - t2; break; }
+    case "cube": {                                 // the twelve edges of a cube, turning slowly
+      const e = Math.floor(b * 12), q = a * 2 - 1, A = (e & 1) ? 1 : -1, B = (e & 2) ? 1 : -1, ax = e >> 2, k = 0.62, j = (c - 0.5) * 0.02;
+      if (ax === 0) { x = q * k; y = A * k; z = B * k; } else if (ax === 1) { x = A * k; y = q * k; z = B * k; } else { x = A * k; y = B * k; z = q * k; }
+      const r = spin * age * 0.4, cr = Math.cos(r), sr = Math.sin(r), xx = x * cr - z * sr; z = x * sr + z * cr; x = xx + j; break; }
+    case "crown": {                                // a small crown of petals
+      th = a * 6.2832 + spin * age; const rr = 0.3 + 0.7 * Math.pow(Math.abs(Math.cos(2.5 * th)), 0.6) * (0.55 + 0.45 * b);
+      x = rr * Math.cos(th); z = rr * Math.sin(th); y = 0.3 * Math.sin(5 * th) * b + (c - 0.5) * 0.06; break; }
+    case "star": {                                 // a five-pointed star outline, lightly folded
+      const sgm = Math.floor(a * 10), f2 = a * 10 - sgm, r1 = sgm % 2 ? 0.42 : 1, r2 = sgm % 2 ? 1 : 0.42;
+      const t1 = sgm / 10 * 6.2832 + spin * age * 0.5, t2b = (sgm + 1) / 10 * 6.2832 + spin * age * 0.5;
+      x = r1 * Math.cos(t1) * (1 - f2) + r2 * Math.cos(t2b) * f2; z = r1 * Math.sin(t1) * (1 - f2) + r2 * Math.sin(t2b) * f2;
+      y = 0.18 * (sgm % 2 ? -1 : 1) * Math.sin(Math.PI * f2) + (b - 0.5) * 0.03; break; }
+    case "seed": {                                 // a seed head: florets in a golden-angle spiral, cupped like a bowl
+      const n = a * 900, rr = Math.sqrt(a); th = n * 2.39996 + spin * age * 0.4;
+      x = rr * Math.cos(th); z = rr * Math.sin(th); y = 0.35 * rr * rr - 0.15 + (b - 0.5) * 0.02; break; }
+    case "funnel": {                               // a funnel spiralling down
+      const h = a; th = h * 6.2832 * 3 + b * 0.5 + spin * age * 0.8; const rr = 0.15 + 0.85 * h * h;
+      x = rr * Math.cos(th); z = rr * Math.sin(th); y = (h - 0.5) * 1.1 + (c - 0.5) * 0.04; break; }
+    case "column": {                               // a dense twisting column
+      th = b * 6.2832 + a * 4 + spin * age * 0.5; const rr = 0.32 * (0.6 + 0.4 * c);
+      x = rr * Math.cos(th); z = rr * Math.sin(th); y = (a - 0.5) * 1.6; break; }
+    default: {                                     // bass vortex: a dense, low disc
+      const rr = Math.sqrt(a); th = b * 6.2832 + spin * age * 0.7 / (rr + 0.25);
+      x = rr * Math.cos(th); z = rr * Math.sin(th); y = (c - 0.5) * 0.16 * (1.1 - rr); }
   }
   out[0] = x; out[1] = y; out[2] = z;
 }
@@ -467,12 +530,12 @@ function noteOn(ev, now) {
   const sc = { piano: 1, strings: 0.95, synth: 0.78, musicbox: 0.62, bass: 1.05 }[kind];
   const az = pc / 12 * 6.2832 + 0.4;
   const f = {
-    kind, p: ev.p, h, v: ev.v, t0: now, end: now + ev.dur, dur: ev.dur, env: 0,
+    kind, shape: SHAPES[kind][(pc + Math.floor(ev.p / 12)) % 3], p: ev.p, h, v: ev.v, t0: now, end: now + ev.dur, dur: ev.dur, env: 0,
     tau: Math.min(1.8, 0.35 + 0.28 * ev.dur),          // longer notes hold their structure longer
     cx: 0.42 * Math.cos(az), cy: (kind === "bass" ? -1.15 + 1.0 * h : -0.95 + 1.95 * h), cz: 0.42 * Math.sin(az) * 0.8,
     r: (0.34 + 0.46 * h) * (0.85 + 0.2 * ev.v) * sc,
-    k: 4.5 + 6 * h, spin: (0.25 + 0.9 * h) * (pc % 2 ? 1 : -1), rise: 0.1 * h,
-    col: INSTRUMENTS[kind].col, ids: [], partner: null, phase: Math.random() * 6.28
+    k: 6 + 6 * h, spin: (0.25 + 0.9 * h) * (pc % 2 ? 1 : -1), rise: 0.1 * h,
+    col: INSTRUMENTS[kind].col.map((x, k) => (x * 0.3 + PC_COL[pc][k] * 0.7) * 0.92), ids: [], partner: null, phase: Math.random() * 6.28
   };
   // tilt: different notes lean differently, so the rings of a chord interlock instead of stacking
   const ax = ((pc * 0.37) % 1 - 0.5) * 1.3 + (kind === "bass" ? 0 : 0.25), az2 = (h - 0.5) * 0.9 + (pc % 3 - 1) * 0.3;
@@ -551,7 +614,7 @@ function visStep(dt, now) {
         const s = S[so + 1], sag = Math.sin(Math.PI * s) * 0.18;
         tx = f.cx + (pt.cx - f.cx) * s + S[so + 4] * 0.03; ty = cy + (pt.cy - cy) * s - sag + S[so + 5] * 0.03; tz = f.cz + (pt.cz - f.cz) * s + S[so + 6] * 0.03;
       } else {
-        shape(f.kind, S[so], S[so + 1], S[so + 2], age, f.spin, loc);
+        shape(f.shape, S[so], S[so + 1], S[so + 2], age, f.spin, loc);
         tx = f.cx + (m[0] * loc[0] + m[1] * loc[1] + m[2] * loc[2]) * sc;
         ty = cy + (m[3] * loc[0] + m[4] * loc[1] + m[5] * loc[2]) * sc;
         tz = f.cz + (m[6] * loc[0] + m[7] * loc[1] + m[8] * loc[2]) * sc;
@@ -587,7 +650,7 @@ function visStep(dt, now) {
     P[o] = px + Vv[o] * dt; P[o + 1] = py + Vv[o + 1] * dt; P[o + 2] = pz + Vv[o + 2] * dt;
     // colour drifts back to ink when a particle is free again
     if (own[i] === -1 && V.mix[i] < 0.5) {
-      const w = S[so + 3], warm = w < 0.08, tr = warm ? 0.62 : INK[0] + w * 0.06, tg = warm ? 0.49 : INK[1] + w * 0.05, tb = warm ? 0.27 : INK[2] + w * 0.03, q = Math.min(1, dt * 0.8);
+      const w = S[so + 3], warm = w < 0.08, tr = warm ? 0.62 : V.ink[0] + w * 0.06, tg = warm ? 0.49 : V.ink[1] + w * 0.05, tb = warm ? 0.27 : V.ink[2] + w * 0.03, q = Math.min(1, dt * 2.2);
       V.col[o] += (tr - V.col[o]) * q; V.col[o + 1] += (tg - V.col[o + 1]) * q; V.col[o + 2] += (tb - V.col[o + 2]) * q;
     }
   }
@@ -603,46 +666,46 @@ body.studio #art, body.studio #hint, body.studio #pieces, body.studio #play, bod
 body.studio .st { display: block; }
 .st-canvas { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; cursor: grab; }
 .st-canvas:active { cursor: grabbing; }
-.st-title { position: absolute; left: 0; right: 0; top: 22px; margin: 0; text-align: center; font-family: var(--serif); font-style: italic; font-size: 16px; color: var(--soft); pointer-events: none; }
-.st-panel { position: absolute; left: 50%; transform: translateX(-50%); bottom: calc(80px + env(safe-area-inset-bottom, 0px)); width: min(1040px, calc(100% - 32px));
-  background: rgba(240, 238, 228, 0.94); border-top: 1px solid var(--line); padding: 14px 0 0; display: grid; gap: 10px; }
-.st-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 22px; }
+.st-title { position: absolute; left: 0; right: 0; top: 16px; margin: 0; text-align: center; font-family: var(--serif); font-style: italic; font-size: 16px; color: var(--soft); pointer-events: none; }
+.st-panel { position: absolute; left: 50%; transform: translateX(-50%); bottom: calc(78px + env(safe-area-inset-bottom, 0px)); width: min(1100px, calc(100% - 32px));
+  background: rgba(240, 238, 228, 0.94); border-top: 1px solid var(--line); padding: 10px 0 0; display: grid; gap: 7px; }
+.st-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; }
 .st-group { display: flex; align-items: center; gap: 8px; }
 .st-label { font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--soft); }
 .st-val { font-family: var(--serif); font-size: 16px; min-width: 2.2em; font-variant-numeric: lining-nums tabular-nums; }
-.st-play { width: 44px; height: 44px; border-color: var(--ink); display: grid; place-items: center; }
+.st-play { width: 38px; height: 38px; border-color: var(--ink); display: grid; place-items: center; }
 .st-play:hover { background: rgba(42, 44, 42, 0.05); }
 .st-play svg, .st-icon svg { width: 14px; height: 14px; fill: var(--ink); }
 .st-play .pause { display: none; }
 .s-playing .st-play .pause { display: block; }
 .s-playing .st-play .start { display: none; }
-.st-icon { width: 32px; height: 32px; display: grid; place-items: center; }
+.st-icon { width: 28px; height: 28px; display: grid; place-items: center; }
 .st-icon:hover, .st-text:hover { border-color: var(--line); }
 .st-icon[aria-pressed="true"] { border-color: var(--ink); }
-.st-pill { height: 26px; padding: 0 9px; font-family: var(--serif); font-style: italic; font-size: 16px; color: var(--soft); }
+.st-pill { height: 24px; padding: 0 7px; font-family: var(--serif); font-style: italic; font-size: 16px; color: var(--soft); }
 .st-pill:hover { color: var(--ink); }
 .st-pill[aria-pressed="true"] { color: var(--ink); border-color: var(--line); }
-.st-text { height: 26px; padding: 0 10px; font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; }
-.st input[type=range] { -webkit-appearance: none; appearance: none; width: 92px; height: 18px; background: transparent; cursor: pointer; }
+.st-text { height: 22px; padding: 0 8px; font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; }
+.st input[type=range] { -webkit-appearance: none; appearance: none; width: 68px; height: 18px; background: transparent; cursor: pointer; }
 .st input[type=range]::-webkit-slider-runnable-track { height: 1px; background: var(--ink); opacity: 0.5; }
 .st input[type=range]::-moz-range-track { height: 1px; background: rgba(42, 44, 42, 0.5); }
 .st input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 11px; height: 11px; margin-top: -5px; border-radius: 50%; background: var(--ink); border: 0; }
 .st input[type=range]::-moz-range-thumb { width: 11px; height: 11px; border-radius: 50%; background: var(--ink); border: 0; }
 .st select { font-family: var(--serif); font-size: 16px; color: var(--ink); background: transparent; border: 0; border-bottom: 1px solid var(--line); padding: 1px 2px; cursor: pointer; }
 .st select:focus-visible, .st input:focus-visible { outline: 1.5px solid var(--ink); outline-offset: 3px; }
-.st-roll { height: 168px; overflow-y: auto; overflow-x: hidden; scrollbar-width: thin; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.st-roll { height: 112px; overflow-y: auto; overflow-x: hidden; scrollbar-width: thin; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
 .st-roll canvas, .st-drums canvas { position: static; inset: auto; display: block; touch-action: none; }
 .st-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; padding-bottom: 2px; }
-.st-tip { margin: 0; font-family: var(--serif); font-style: italic; font-size: 15px; color: var(--soft); }
+.st-tip { margin: 0; font-family: var(--serif); font-style: italic; font-size: 14px; color: var(--soft); }
 .st-msg { font-size: 10px; color: var(--soft); min-width: 7em; }
 .st-collapsed .st-roll, .st-collapsed .st-drums, .st-collapsed .st-foot, .st-collapsed .st-more { display: none; }
 .st-spacer { flex: 1; }
-@media (max-width: 720px) { .st-panel { bottom: calc(76px + env(safe-area-inset-bottom, 0px)); } .st-roll { height: 150px; } .st-title { display: none; } }
+@media (max-width: 720px) { .st-panel { bottom: calc(76px + env(safe-area-inset-bottom, 0px)); } .st-roll { height: 100px; } .st-title { display: none; } }
 `;
 const ui = {};
 let dirty = true, selected = null, lastLen = 2;
 const sounding_ = new Map();   // notes sounding right now -> end time (for highlights)
-const KEYW = 46, RH = 12, LANE = 20;
+const KEYW = 42, RH = 9, LANE = 14;
 
 function el(tag, props, kids) {
   const e = document.createElement(tag);
@@ -677,8 +740,8 @@ function buildUI() {
   panel.appendChild(el("div", { class: "st-row" }, [
     el("div", { class: "st-group" }, [ui.play, ui.stop, ui.loop]),
     el("div", { class: "st-group st-more" }, [el("span", { class: "st-label", text: "Tempo" }), ui.tempo, ui.tempoV]),
-    el("div", { class: "st-group st-more" }, [el("span", { class: "st-label", text: "Volume" }), ui.vol]),
-    el("div", { class: "st-group st-more" }, [el("span", { class: "st-label", text: "Key" }), ui.key, ui.scale]),
+    el("div", { class: "st-group st-more" }, [el("span", { class: "st-label", text: "Vol" }), ui.vol]),
+    el("div", { class: "st-group st-more" }, [ui.key, ui.scale]),
     el("span", { class: "st-spacer" }),
     ui.insts, ui.fold
   ]));
@@ -790,7 +853,7 @@ function drawRoll(head) {
     const y = r * RH, black = [1, 3, 6, 8, 10].includes(p % 12);
     g.fillStyle = lit.has(p) ? "#C49A3E" : black ? "#3A3B39" : "#FAF8F1";
     g.fillRect(0, y + 0.5, KEYW - 6, RH - 1);
-    if (p % 12 === 0) { g.fillStyle = lit.has(p) ? "#FAF8F1" : "#8C8A80"; g.font = "9px 'DM Mono', monospace"; g.textBaseline = "middle"; g.fillText(noteName(p), 4, y + RH / 2 + 0.5); }
+    if (p % 12 === 0) { g.fillStyle = lit.has(p) ? "#FAF8F1" : "#8C8A80"; g.font = "8px 'DM Mono', monospace"; g.textBaseline = "middle"; g.fillText(noteName(p), 3, y + RH / 2 + 0.5); }
   });
   g.fillStyle = "rgba(42,44,42,0.16)"; g.fillRect(KEYW - 6, 0, 0.6, h);
   // notes
@@ -815,8 +878,8 @@ function drawRoll(head) {
     for (let s = 0; s < n; s++) {
       const x = KEYW + (s + 0.5) * sw, v = song.drums[dr.id][s], now = s === hs;
       d.beginPath();
-      if (!v) { d.arc(x, y, 2.2, 0, Math.PI * 2); d.strokeStyle = s % 4 === 0 ? "rgba(42,44,42,0.38)" : "rgba(42,44,42,0.2)"; d.lineWidth = 0.8; d.stroke(); }
-      else { d.arc(x, y, v > 1 ? 5 : 3.6, 0, Math.PI * 2); d.fillStyle = now ? "#C49A3E" : "#2A2C2A"; d.fill(); if (v > 1) { d.beginPath(); d.arc(x, y, 7, 0, Math.PI * 2); d.strokeStyle = now ? "#C49A3E" : "rgba(42,44,42,0.45)"; d.lineWidth = 0.8; d.stroke(); } }
+      if (!v) { d.arc(x, y, 1.9, 0, Math.PI * 2); d.strokeStyle = s % 4 === 0 ? "rgba(42,44,42,0.38)" : "rgba(42,44,42,0.2)"; d.lineWidth = 0.8; d.stroke(); }
+      else { d.arc(x, y, v > 1 ? 4.2 : 3, 0, Math.PI * 2); d.fillStyle = now ? "#C49A3E" : "#2A2C2A"; d.fill(); if (v > 1) { d.beginPath(); d.arc(x, y, 5.8, 0, Math.PI * 2); d.strokeStyle = now ? "#C49A3E" : "rgba(42,44,42,0.45)"; d.lineWidth = 0.8; d.stroke(); } }
     }
   });
   if (head != null) { d.fillStyle = "rgba(42,44,42,0.5)"; d.fillRect(KEYW + head * sw, 0, 1, DRUMS.length * LANE); }
@@ -920,14 +983,14 @@ function layout() {
   if (!V.ready) return;
   const W = window.innerWidth, H = window.innerHeight, dpr = Math.min(window.devicePixelRatio || 1, 2);
   V.r.setPixelRatio(dpr); V.r.setSize(W, H, false);
-  const top = ui.panel.getBoundingClientRect().top, free = Math.max(160, top - 50);
+  const top = ui.panel.getBoundingClientRect().top, free = Math.max(160, top - 44);
   V.free = free; V.W = W; V.H = H;
   // fit the sculpture (about 4.2 units tall, 4.6 wide) into the free area
   const tn = Math.tan(V.cam.fov / 2 * Math.PI / 180), aspect = W / H;
-  const needH = 3.9 / 2 / tn * (H / free), needW = 4.6 / 2 / (tn * aspect);
-  V.cam.position.z = Math.max(needH, needW, 6.2);
+  const needH = 3.35 / 2 / tn * (H / free), needW = 4.1 / 2 / (tn * aspect);
+  V.cam.position.z = Math.max(needH, needW, 4.6);
   V.cam.aspect = aspect;
-  V.targetOff = H / 2 - (50 + free / 2);
+  V.targetOff = H / 2 - (44 + free / 2);
   if (V.offY === 0) V.offY = V.targetOff;
   V.cam.setViewOffset(W, H, 0, V.offY, W, H);
   V.mat.uniforms.uPx.value = dpr * 0.034 * Math.min(free, 900) * (V.cam.position.z / 7.4); V.mat.uniforms.uMin.value = 1.3 * dpr;
@@ -953,6 +1016,7 @@ function loop(now) {
   }
   // the camera eases when the studio is folded away or unfolded
   if (Math.abs(V.offY - V.targetOff) > 0.5) { V.offY += (V.targetOff - V.offY) * Math.min(1, dt * 6); V.cam.setViewOffset(V.W, V.H, 0, V.offY, V.W, V.H); }
+  restTick(dt);
   visStep(dt, V.time);
   V.rot += dt * (0.035 + 0.06 * Math.min(1, V.E));
   V.group.rotation.set(V.dragX, V.rot + V.dragY, 0);
