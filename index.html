@@ -70,6 +70,7 @@ button:disabled { color: var(--line); cursor: default; }
   <div class="row rooms" id="rooms" aria-label="Styles"></div>
 </nav>
 <p class="sr" id="live" role="status"></p>
+<p class="credit" id="music-credit" hidden></p>
 <p class="credit" id="credit" hidden>Pig model: <a href="https://sketchfab.com/3d-models/domestic-pig-male-3abdf13ff0c341078526d4a4a79560f5" target="_blank" rel="noopener">&ldquo;Domestic Pig - male&rdquo;</a> by Noa Seller, <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">CC BY 4.0</a></p>
 
 <script src="audio/track-1-1.js"></script>
@@ -97,32 +98,32 @@ button:disabled { color: var(--line); cursor: default; }
 // ================================================================
 const ROOMS = [
   { pieces: [
-      { sound: "file", file: "1-1", art: "medallion" },
+      { sound: "file", file: "1-1", by: "Max Liang", art: "medallion" },
       { sound: "generated", make: "maqsum", art: "arch" },
       { sound: "generated", make: "saidi",  art: "loom" }
   ] },
   { pieces: [
-      { sound: "file", file: "2-1", art: "moon" },
+      { sound: "file", file: "2-1", by: "Max Liang", art: "moon" },
       { sound: "generated", make: "bulerias", art: "manton" },
       { sound: "generated", make: "tangos",   art: "feria" }
   ] },
   { pieces: [
-      { sound: "file", file: "3-1", art: "sun" },
+      { sound: "file", file: "3-1", by: "Max Liang", art: "sun" },
       { sound: "generated", make: "prelude", art: "heaven" },
       { sound: "generated", make: "sunny",   art: "lilies" }
   ] },
   { pieces: [
-      { sound: "file", file: "4-1", art: "guitarist" },
+      { sound: "file", file: "4-1", by: "Max Liang", art: "guitarist" },
       { sound: "generated", make: "lament",    art: "scream" },
       { sound: "generated", make: "nocturne",  art: "chapel" }
   ] },
   { pieces: [
-      { sound: "file", file: "5-1", art: "kimono" },
+      { sound: "file", file: "5-1", by: "Max Liang", art: "kimono" },
       { sound: "generated", make: "nami",      art: "koi" },
       { sound: "generated", make: "sakura",    art: "eisho" }
   ] },
   { pieces: [
-      { sound: "file", file: "6-1", art: "field" },
+      { sound: "file", file: "6-1", by: "Judy Zhu", art: "field" },
       { sound: "generated", make: "drizzle", art: "pond" },
       { sound: "generated", make: "glass",   art: "pane" }
   ] },
@@ -2947,7 +2948,10 @@ ROOMS.forEach((room, i) => {
 });
 
 function renderControls() {
-  document.getElementById("credit").hidden = ROOMS[roomIndex].pieces[pieceIndex].art !== "field";
+  const piece = ROOMS[roomIndex].pieces[pieceIndex], mc = document.getElementById("music-credit");
+  document.getElementById("credit").hidden = piece.art !== "field";
+  mc.hidden = !piece.by; mc.textContent = piece.by ? "Music by " + piece.by : "";
+  mc.style.bottom = piece.art === "field" ? "calc(26px + env(safe-area-inset-bottom, 0px))" : "";
   [...roomsEl.children].forEach((b, i) => b.setAttribute("aria-current", String(i === roomIndex)));
   piecesEl.innerHTML = "";
   if (ROOMS[roomIndex].pieces.length > 1) ROOMS[roomIndex].pieces.forEach((p, i) => {
