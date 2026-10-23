@@ -1,10 +1,10 @@
 // ================================================================
-// ROOM 4, pieces i and ii — the paintings hold still; the music changes only what surrounds the paint.
-//   i   the Blue Period guitarist: painted once and never repainted. The music moves only the light and
-//       the depth of the blues, as if a lamp in the room swelled and faded.
-//   ii  after Munch: painted once, then the sky and the fjord breathe. A slow displacement follows the
-//       painting's own bands and swirls, almost still when the music is quiet, rising with crescendos.
-//       The figure and the bridge never move.
+// ROOM 4, pieces i and ii — the paint itself never moves; the figures and the light do.
+//   i   the Blue Period guitarist: the room and his hunched body are painted once and held still; his arms,
+//       hands, head and guitar are drawn live on top, playing with the music; a lamp-like light swells and fades.
+//   ii  after Munch: the landscape is painted once, then its sky and fjord breathe through a slow displacement
+//       that follows the painting's own bands; the bridge stays still; the figure, on its own layer in front,
+//       sways and breathes to a slower rhythm and opens its mouth on the strong beats.
 // ================================================================
 
 // paint a scene once with the oil-paint layer at rest, and keep the result (device pixels of rect)
@@ -44,28 +44,48 @@ void main(){
   vec2 e = uv - .5; c *= 1. - dot(e, e) * (.28 + uD * .25);
   o = vec4(clamp(c, 0., 1.), 1.);
 }`;
+const BLUE4R_FS = PAINT_COMMON + `
+uniform sampler2D uSrc; uniform vec4 uBox; uniform vec2 uRes; uniform float uScale, uI, uD, uLamp;
+in vec2 vUv; out vec4 o;
+void main(){
+  vec2 uv = gl_FragCoord.xy / uRes;
+  vec4 c0 = texture(uSrc, uBox.xy + uv * uBox.zw); vec3 c = c0.rgb;
+  float l = dot(c, vec3(.3, .59, .11));
+  // the room's light: a soft pool high on the left where his head and shoulders are; it swells with the music
+  vec2 p = uv - vec2(.36, .66); p.x *= uRes.x / uRes.y;
+  float pool = exp(-dot(p, p) * 4.5);
+  // tonal depth: in quiet passages the shadows sink further into Prussian blue; when it swells they open a little
+  float sh = smoothstep(.45, .05, l);
+  c = mix(c, c * vec3(.86, .9, 1.02), sh * uD);
+  c *= 1. + pool * uLamp * (.25 + l * .6);
+  c *= uI;
+  vec2 e = uv - .5; c *= 1. - dot(e, e) * (.28 + uD * .25);
+  o = vec4(clamp(c, 0., 1.), 1.);
+}`;
 function guitaristStill(t, dt, box) {
   const h = box.h, w = Math.min(box.w, h * 0.66), rect = { x: box.x + (box.w - w) / 2, y: box.y, w, h };
   const key = Math.round(box.w) + "x" + Math.round(box.h) + "@" + DPR;
   if (blue4.key !== key && (PAINT.gl !== null || (paintSetup(), true)) && PAINT.gl) {
     blue4.key = key;
-    // his pose is held: hands still on the strings, head bowed, no grain laid over the paint
-    Object.assign(guitarist, { slide: 0.5, pluck: 0, strum: 0, press: 0, lastPitch: 0, nod: { x: 0, v: 0 } });
-    const cv = r4Bake(() => { guitaristScene(0, 0, box); guitarist.grain = offscreen(1, 1, () => {}); guitarist.grain.w = 0; guitarist.grain.h = 0;
-      g.save(); g.setTransform(DPR, 0, 0, DPR, 0, 0); g.clearRect(box.x, box.y, box.w, box.h); g.restore(); guitaristScene(0, 0, box); }, box, rect, "blue");
-    blue4.tex = manuTex(cv, blue4.tex);
+    // the room and his still, hunched body are painted once, with the paint at rest; that painting then
+    // replaces the drawn backdrop, so only his arms, hands, head and guitar are drawn live on top of it
+    guitarist.key = ""; guitaristScene(0, 0, box);
+    const cv = r4Bake(() => { g.save(); g.beginPath(); g.rect(rect.x, rect.y, w, h); g.clip(); blit(guitarist.back, rect.x, rect.y); g.restore(); }, box, rect, "blue");
+    cv.w = w; cv.h = h; guitarist.back = cv;
+    guitarist.grain = document.createElement("canvas"); guitarist.grain.w = 0; guitarist.grain.h = 0;
   }
-  if (!blue4.tex) return;
+  guitaristScene(t, dt, box);       // he plays: the fretting hand follows the melody, a finger plucks each note, his head sinks on the beats
+  if (!blue4.key) return;
   const quietness = 1 - Math.min(1, S.mid * 0.9 + S.bass * 0.4);
   blue4.depth += (quietness - blue4.depth) * Math.min(1, dt * 0.5);
   blue4.lamp += (Math.min(1, S.mid * 0.6 + S.pulse * 0.25) - blue4.lamp) * Math.min(1, dt * 0.9);
   blue4.li += ((0.97 + S.mid * 0.05) - blue4.li) * Math.min(1, dt * 0.7);
-  r3Tex("blue4", BLUE4_FS, rect, { uI: blue4.li, uD: blue4.depth * 0.6, uLamp: blue4.lamp * 0.22 }, { tP: blue4.tex });
+  r2Pass("blue4r", BLUE4R_FS, rect, { uI: blue4.li, uD: blue4.depth * 0.6, uLamp: blue4.lamp * 0.22 });
 }
 
 // ---- 4ii ----
-const munch = { key: "", tP: null, tD: null, amp: 0, ph: 0, br: 0, brPh: 0 };
-function screamDraw(box, mask) {
+const munch = { key: "", tP: null, tD: null, amp: 0, ph: 0, br: 0, brPh: 0, fph: 0, fsw: 0 };
+function screamDraw(box, mode, ph = 2.2, sw = 0.3, open = 0.75) {
   const t = 0, dt = 0;
   const h = box.h, w = Math.min(box.w, h * 0.8), x0 = box.x + (box.w - w) / 2, y0 = box.y, u = h / 100, W8 = w / u;
   const X = v => x0 + v * u, Y = v => y0 + v * u;
@@ -91,10 +111,9 @@ function screamDraw(box, mask) {
       }
     });
   }
-  const ph = 2.2, sw = 0.3;                       // one moment, held still: the painting itself never moves
   g.save(); g.beginPath(); g.rect(x0, y0, w, h); g.clip();
   g.lineCap = "round"; g.lineJoin = "round";
-  if (!mask) {
+  if (mode === "bg") {
   // the sky: bands of red, orange and yellow that roll like waves
   g.fillStyle = "rgb(214,96,46)"; g.fillRect(x0, y0, w, Y(46) - y0);
   for (let b = 0; b < 44; b++) {
@@ -120,9 +139,10 @@ function screamDraw(box, mask) {
   }
   g.restore();
   }
-  blit(scream.deck, x0, y0);
+  if (mode !== "fig") blit(scream.deck, x0, y0);
+  if (mode === "fig") {
   // the screaming figure: a skull-like face held between two hands, a thin dark body that bends with the waves
-  const fx = W8 * 0.42, wave = y => Math.sin(y * 0.11 - ph * 1.3) * (1.6 + sw * 2.2);
+  const fx = W8 * 0.42, wave = y => Math.sin(y * 0.11 - ph * 1.3) * (0.7 + sw * 1.3);   // a gentle sway, never a rubbery bend
   const SK = { line: [70, 62, 42], dark: [128, 124, 84], mid: [198, 182, 128], light: [236, 222, 172] };
   const ROBE = { line: [14, 14, 22], dark: [16, 18, 30], mid: [34, 38, 58], light: [70, 74, 104] };
   const robe = () => {
@@ -143,7 +163,7 @@ function screamDraw(box, mask) {
   }
   g.restore();
   // a thin neck rising out of the collar
-  const hx = fx + wave(60), hy = 58, open = 0.75;
+  const hx = fx + wave(60), hy = 58;
   tube([[X(fx + wave(67)), Y(67)], [X(hx), Y(hy + 5)]], [u * 3, u * 2.4], SK, [-0.7, -0.7], u * 0.25);
   // arms bent up, elbows out, hands pressed to the head
   for (const s of [-1, 1]) tube([[X(fx + s * 3.6 + wave(67)), Y(67.5)], [X(fx + s * 7.4 + wave(64)), Y(66)], [X(hx + s * 6.2), Y(hy + 3.4)], [X(hx + s * 4.4), Y(hy + 1.4)]], [u * 3.2, u * 2.8, u * 2.3, u * 2], ROBE, [-0.7, -0.7], u * 0.3);
@@ -177,6 +197,7 @@ function screamDraw(box, mask) {
     tube([[s * 4.3, 5.2], [s * 3.2, 4.2], [s * 2.6, 2.8]], [1, 0.9, 0.75], SK, [-0.7, -0.7], 0.14); // thumb along the jaw
   }
   g.restore();
+  }
   g.restore();
 }const MUNCH_FS = PAINT_COMMON + `
 uniform sampler2D tP, tD; uniform vec2 uRes; uniform float uScale, uA, uPh, uBr, uU;
@@ -210,10 +231,10 @@ function screamFlow(t, dt, box) {
   if (munch.key !== key && (PAINT.gl !== null || (paintSetup(), true)) && PAINT.gl) {
     munch.key = key;
     scream.key = "";
-    const cv = r4Bake(() => { screamDraw(box, false); }, box, rect, "munch");
+    const cv = r4Bake(() => { screamDraw(box, "bg"); }, box, rect, "munch");     // the landscape, without the figure
     munch.tP = manuTex(cv, munch.tP);
-    // where the painting must stay still: the bridge, its railing, the figures, with a wide soft margin
-    const m = offscreen(w, h, () => { scream.key = ""; screamDraw({ x: 0, y: 0, w, h }, true); });
+    // where the painting must stay still: the bridge and its railing, with a wide soft margin
+    const m = offscreen(w, h, () => { scream.key = ""; screamDraw({ x: 0, y: 0, w, h }, "mask"); });
     const Wd = cv.width, Hd = cv.height, md = m.getContext("2d").getImageData(0, 0, m.width, m.height).data, n = Wd * Hd, f = new Float32Array(n);
     for (let y = 0; y < Hd; y++) for (let x = 0; x < Wd; x++) { const sx = Math.min(m.width - 1, x), sy = Math.min(m.height - 1, y); f[y * Wd + x] = md[(sy * m.width + sx) * 4 + 3] > 128 ? 1 : 0; }
     const rad = Math.max(2, Math.round(DPR * 9)), tmp = new Float32Array(n), a = Float32Array.from(f);
@@ -234,4 +255,9 @@ function screamFlow(t, dt, box) {
   munch.ph += dt * (0.22 + I * 0.55);
   munch.brPh += dt * (0.3 + I * 0.35);
   r3Tex("munch", MUNCH_FS, rect, { uA: 0.35 + I * 7.5, uPh: munch.ph, uBr: Math.sin(munch.brPh) * (0.1 + I * 0.9), uU: h / 100 }, { tP: munch.tP, tD: munch.tD });
+  // the figure, on its own layer in front: it sways and breathes to its own slower rhythm, and screams on the strong beats
+  munch.fsw += (Math.min(1, S.bass * 0.8 + S.mid * 0.5) - munch.fsw) * Math.min(1, dt * 1.2);
+  munch.fph += dt * (0.45 + munch.fsw * 0.7);
+  scream.mouth *= Math.pow(0.3, dt);
+  screamDraw(box, "fig", munch.fph, munch.fsw, 0.45 + scream.mouth * 0.55 + munch.fsw * 0.2);
 }
