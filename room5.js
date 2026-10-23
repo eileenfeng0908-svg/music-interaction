@@ -306,12 +306,15 @@ void main(){
     q += (vec2(vn(q * .35 + G), vn(q * .35 + G + 9.)) - .5) * .04;      // a carver's hand, never quite true
     float fw = max(fwidth(q.x), fwidth(q.y));
     vec3 ground, lineC; float d2 = 1., extra = 0.;
-    vec3 IND = lin(vec3(.16, .23, .37)), IND2 = lin(vec3(.25, .36, .52)), IVO = lin(vec3(.93, .9, .82)), GOLD = lin(vec3(.72, .6, .36)), SAGE = lin(vec3(.56, .63, .54)), VER = lin(vec3(.74, .36, .27));
-    if (T < 1.) { ground = IND; lineC = IVO; d2 = asanoha(q * 1.2) / 1.2; }
-    else if (T < 2.) { ground = IVO; lineC = IND; float rg; d2 = seigaiha(q * vec2(1., 1.) , rg); extra = step(2., rg) * step(rg, 3.) * .1; }
-    else if (T < 3.) { ground = SAGE; lineC = GOLD; float lens; d2 = shippo(q * .9, lens) / .9; extra = lens; }
-    else if (T < 4.) { ground = VER; lineC = IVO; d2 = abs(fract(q.x * 2.) - .5) / 2.; }  // kiku: the chrysanthemum's ribbed petals
-    else { ground = IND2; lineC = GOLD; d2 = asanoha(q * .8) / .8; }
+    // the traditional dyers' colours: kon (deep indigo), asagi (pale blue-green), uguisu (bush-warbler green),
+    // shu (vermilion), sakura (cherry pink), kinari (unbleached silk) and kin (gold leaf)
+    vec3 KON = lin(vec3(.13, .19, .33)), ASAGI = lin(vec3(.5, .68, .7)), UGUISU = lin(vec3(.45, .48, .33)), SHU = lin(vec3(.72, .27, .2)),
+         SAKURA = lin(vec3(.91, .76, .75)), IVO = lin(vec3(.94, .91, .83)), GOLD = lin(vec3(.76, .62, .34)), IND = KON;
+    if (T < 1.) { ground = KON; lineC = GOLD; d2 = asanoha(q * 1.2) / 1.2; }
+    else if (T < 2.) { ground = ASAGI; lineC = IVO; float rg; d2 = seigaiha(q, rg); extra = step(2., rg) * step(rg, 3.) * .12; }
+    else if (T < 3.) { ground = UGUISU; lineC = GOLD; float lens; d2 = shippo(q * .9, lens) / .9; extra = lens; }
+    else if (T < 4.) { ground = SHU; lineC = GOLD; d2 = abs(fract(q.x * 2.) - .5) / 2.; }  // kiku: the chrysanthemum's ribbed petals
+    else { ground = SAKURA; lineC = SHU; d2 = asanoha(q * .8) / .8; }
     float lw = .045;
     float line = 1. - smoothstep(lw - fw, lw + fw, d2);
     // the printed ground: a woodblock's slightly uneven ink, with the paper's fibres showing through
