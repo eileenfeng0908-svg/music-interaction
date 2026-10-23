@@ -1,7 +1,7 @@
 // ================================================================
 // ROOM 2, pieces ii and iii — redesigned Oct 23.
 //   ii  AZULEJOS: a wall of glazed Andalusian tiles on which the ornament draws and glazes itself
-//   iii SEDA: two lengths of crimson silk and chiffon suspended in moving air, a living sculpture
+//   iii ABANICOS: Spanish folding fans that open and turn with the music, forming rosettes and arcs
 // ================================================================
 
 // ----------------------------------------------------------------
@@ -287,213 +287,358 @@ function azulejoBeat() {
 }
 
 
+
 // ----------------------------------------------------------------
-// 2iii  SEDA. An installation, not a dress: two long lengths of fabric hang from points above the frame
-// in a warm, softly lit gallery space: a crimson matte silk crêpe and, behind it, a sheer muted-red
-// chiffon. Each is gathered where it is held, so folds fan out from the top, and its end pools on the floor.
-// The cloth is simulated (gravity, inertia, threads that stretch little and bend easily, air resistance
-// across the cloth), and only the music moves it: it carries the points where the fabric is held in
-// slow arcs whose pace follows the music's intensity, and every beat is a sweep, the way a dancer swings
-// a mantón or kicks the train of a bata de cola. A beat sends a gust in the direction of the sweep and turns
-// the hold so the fabric twists; the strongest beats raise a rising spiral of air that lifts the silk and
-// unfolds it. Quiet passages leave it floating and barely moving. The backlight glows through the cloth.
+// 2iii  ABANICOS. Seven Spanish folding fans mounted before a warm plaster wall, as in a display of
+// decorative arts: each with a pleated leaf over carved, pierced wooden sticks and two guard sticks inlaid
+// with gold, a gilt rivet at the pivot. Four kinds of leaf, all in burgundy, ivory, muted gold and deep red:
+//   pintado   ivory silk painted in gouache with roses, buds and gilded leaves (as painted in Valencia)
+//   encaje    ivory bobbin lace: flowers and scrolls joined by a net, a scalloped edge; the sticks show through
+//   bordado   burgundy silk embroidered in satin stitch with carnations in ivory, deep red and gold
+//   grande    the large fan: deep red silk with gilded arabesques and a painted cartouche
+// The leaf is folded for real: as a fan closes its pleats deepen, its sticks slide over one another.
+// The music is the choreography. Every beat opens the next fans in turn, a ripple running round the
+// group like the turn of a dancer's wrists; strong beats open them all at once and turn the whole
+// formation; louder music keeps them wider open, quiet music lets them breathe nearly closed. Every few
+// strong beats the fans gather, close and re-form: a rosette, a fan of fans, two arms crossing.
 // ----------------------------------------------------------------
-const SIL = { ready: false };
-const sil = { E: 0, ph: 0, side: 1, n: 0, gust: [0, 0, 0], vort: 0, lastVort: -9, lastT: -9, now: 0, queue: [] };
-const SIL_P = [
-  // columns, rows, spacing (m), drag (the sheer chiffon catches more air), and the two points it is held by
-  { cols: 38, rows: 88, sp: 0.04, drag: 0.12, holds: [[-1.0, 3.0, 0.1], [0.1, 3.08, 0.3]] },
-  { cols: 34, rows: 80, sp: 0.04, drag: 0.2, holds: [[0.15, 3.08, -0.6], [1.15, 3.0, -0.45]] }
-];
-function silCloth() {
-  const P = [], W = [], K = [], C = [], panels = [];
-  SIL_P.forEach((Q, k) => {
-    const t0 = W.length, { cols, rows, sp } = Q, [A, B] = Q.holds;
-    for (let v = 0; v < rows; v++) for (let u = 0; u < cols; u++) {
-      const s = u / (cols - 1);
-      P.push(A[0] + (B[0] - A[0]) * s, A[1] + (B[1] - A[1]) * s - v * sp * 0.97, A[2] + (B[2] - A[2]) * s + Math.sin(u * 0.7 + v * 0.11) * 0.02);
-      W.push(1); K.push(Q.drag);
-    }
-    const I = (u, v) => t0 + v * cols + u;
-    for (let v = 0; v < rows; v++) for (let u = 0; u < cols; u++) {
-      if (u + 1 < cols) C.push([I(u, v), I(u + 1, v), sp, 1]);
-      if (v + 1 < rows) { C.push([I(u, v), I(u, v + 1), sp, 1]);
-        if (u + 1 < cols) { C.push([I(u, v), I(u + 1, v + 1), sp * Math.SQRT2, 0.45]); C.push([I(u + 1, v), I(u, v + 1), sp * Math.SQRT2, 0.45]); } }
-      if (u + 2 < cols) C.push([I(u, v), I(u + 2, v), sp * 2, 0.05]);    // silk bends easily, so the bending threads are soft
-      if (v + 2 < rows) C.push([I(u, v), I(u, v + 2), sp * 2, 0.05]);
-    }
-    // held at two corners of the top edge, each gathered a little in the hand of an unseen holder
-    const holds = [[0, 1, 2], [cols - 3, cols - 2, cols - 1]].map((us, h) => { us.forEach(u => W[I(u, 0)] = 0); return { us, home: Q.holds[h], a: { p: Q.holds[h].slice(), v: [0, 0, 0] } }; });
-    panels.push({ t0, cols, rows, Q, I, holds });
-  });
-  const n = W.length, ci = new Int32Array(C.length * 2), cr = new Float32Array(C.length), ck = new Float32Array(C.length);
-  C.forEach(([i, j, r, k], m) => { ci[m * 2] = i; ci[m * 2 + 1] = j; cr[m] = r; ck[m] = k; });
-  return { n, X: new Float32Array(P), O: new Float32Array(P), W: new Float32Array(W), K: new Float32Array(K), N: new Float32Array(n * 3), ci, cr, ck, panels };
+const ABA = { ready: false, SPAN: 2.8, NR: 18, FR: 8, R1: 0.44 };
+const aba = { E: 0, ph: 0, n: 0, side: 1, form: 0, rot: { x: 0, v: 0 }, rotT: 0, strongN: 0, lastStrong: -9, hush: 0, queue: [], lastT: -9, now: 0 };
+const ABA_COL = { burg: [84, 16, 30], deep: [112, 18, 28], ivory: [238, 229, 210], gold: [182, 148, 86], goldD: [126, 96, 50] };
+const abaRGB = (c, k = 1, a = 1) => `rgba(${c.map(q => Math.round(Math.max(0, Math.min(255, q * k)))).join(",")},${a})`;
+
+// the flat leaf, as it would lie fully opened: canvas coordinates of a point at radius rad (0..1) and angle a
+const ABA_W = 2048, ABA_H = 1100, ABA_SC = 1000, ABA_CX = 1024, ABA_CY = 1062;
+const abaP = (rad, a) => [ABA_CX + Math.sin(a) * rad * ABA_SC, ABA_CY - Math.cos(a) * rad * ABA_SC];
+function abaClip(x, r1, r2, pad = 0.03) {
+  const h = ABA.SPAN / 2 + pad; x.beginPath(); x.arc(ABA_CX, ABA_CY, r2 * ABA_SC, -Math.PI / 2 - h, -Math.PI / 2 + h); x.arc(ABA_CX, ABA_CY, r1 * ABA_SC, -Math.PI / 2 + h, -Math.PI / 2 - h, true); x.closePath();
 }
-function silPin(cl) {
-  for (const pn of cl.panels) for (const H of pn.holds) H.us.forEach((u, j) => { const i = pn.I(u, 0) * 3; cl.X[i] = H.a.p[0] + (j - 1) * 0.025; cl.X[i + 1] = H.a.p[1]; cl.X[i + 2] = H.a.p[2]; });
+function abaBand(x, r1, r2, fill) { abaClip(x, r1, r2, 0.04); x.fillStyle = fill; x.fill(); }
+// silk: a fine weave and a little unevenness of dye
+function abaSilk(x, base, seed) {
+  const r = seeded(seed); x.fillStyle = abaRGB(base); x.fillRect(0, 0, ABA_W, ABA_H);
+  for (let i = 0; i < 26; i++) { const g = x.createRadialGradient(r() * ABA_W, r() * ABA_H, 0, r() * ABA_W, r() * ABA_H, 200 + r() * 400);
+    g.addColorStop(0, r() < 0.5 ? "rgba(0,0,0,0.035)" : "rgba(255,240,220,0.035)"); g.addColorStop(1, "rgba(0,0,0,0)"); x.fillStyle = g; x.fillRect(0, 0, ABA_W, ABA_H); }
+  for (let y = 0; y < ABA_H; y += 2) { x.fillStyle = `rgba(${r() < 0.5 ? "0,0,0" : "255,250,240"},${0.012 + r() * 0.02})`; x.fillRect(0, y, ABA_W, 1); }
+  for (let i = 0; i < 2500; i++) { x.fillStyle = `rgba(${r() < 0.5 ? "0,0,0" : "255,250,240"},${0.02 + r() * 0.03})`; x.fillRect(r() * ABA_W, r() * ABA_H, 6 + r() * 60, 1); }
 }
-// the air: a faint drift that follows the music, the gust of the last sweep, and on the strongest beats a rising spiral
-function silWind(x, y, z, out) {
-  const E = sil.E, ph = sil.ph;
-  let wx = Math.sin(ph * 0.7 + y * 0.8) * 0.25 * E + sil.gust[0], wy = sil.gust[1] + Math.sin(ph * 0.5 + x * 1.3) * 0.12 * E, wz = Math.cos(ph * 0.6 + y * 0.6) * 0.2 * E + sil.gust[2];
-  if (sil.vort > 0.01) { const dx = x - 0.1, dz = z + 0.1, r = Math.hypot(dx, dz) + 0.25, f = sil.vort * Math.exp(-r * r * 0.8);
-    wx += -dz / r * f * 1.8 + dx / r * f * 0.4; wz += dx / r * f * 1.8 + dz / r * f * 0.4; wy += f * 1.6 * Math.max(0, 1.4 - y * 0.45); }
-  out[0] = wx; out[1] = wy; out[2] = wz;
+// a rose in gouache: two rings of cupped petals, the heart curled inward, light from the upper left
+function abaRose(x, px, py, R, col, rot, r) {
+  x.save(); x.translate(px, py); x.rotate(rot);
+  const ring = (n, s, k0, off) => { for (let i = 0; i < n; i++) { const a = off + i / n * TAU + (r() - 0.5) * 0.25; x.save(); x.rotate(a);
+    const lit = 0.85 + 0.35 * Math.max(0, Math.cos(a + 2.4)), g = x.createLinearGradient(0, -R * 0.1 * s, 0, -R * s);
+    g.addColorStop(0, abaRGB(col, 0.6 * k0)); g.addColorStop(0.6, abaRGB(col, lit * k0)); g.addColorStop(1, abaRGB(col, (lit + 0.25) * k0));
+    x.fillStyle = g; x.beginPath(); x.moveTo(-R * 0.18 * s, -R * 0.05 * s);
+    x.bezierCurveTo(-R * 0.78 * s, -R * 0.3 * s, -R * 0.6 * s, -R * 1.02 * s, 0, -R * 0.96 * s); x.bezierCurveTo(R * 0.6 * s, -R * 1.02 * s, R * 0.78 * s, -R * 0.3 * s, R * 0.18 * s, -R * 0.05 * s); x.closePath(); x.fill();
+    x.strokeStyle = abaRGB([255, 220, 205], 1, 0.28); x.lineWidth = Math.max(1, R * 0.025); x.beginPath(); x.moveTo(-R * 0.5 * s, -R * 0.75 * s); x.quadraticCurveTo(0, -R * 1.02 * s, R * 0.5 * s, -R * 0.75 * s); x.stroke();
+    x.restore(); } };
+  ring(6, 1, 0.92, r() * 6); ring(5, 0.68, 1.0, r() * 6);
+  x.lineCap = "round";
+  for (let i = 0; i < 5; i++) { x.strokeStyle = abaRGB(col, 0.55 + i * 0.12); x.lineWidth = R * 0.075; x.beginPath(); x.arc(R * 0.02 * i, -R * 0.02 * i, R * (0.08 + i * 0.065), i * 1.9 + 0.3, i * 1.9 + 3.4); x.stroke(); }
+  x.restore();
 }
-function silStep(cl, h) {
-  const { X, O, W, K, N, ci, cr, ck, n } = cl, w = [0, 0, 0];
-  for (let p = 0; p < n; p++) {
-    if (W[p] === 0) continue;
-    const i = p * 3;
-    let vx = X[i] - O[i], vy = X[i + 1] - O[i + 1], vz = X[i + 2] - O[i + 2];
-    if (p % 3 === 0) silWind(X[i], X[i + 1], X[i + 2], w);           // the air varies slowly in space: sample it sparsely
-    // air resistance across the cloth (relative to the moving air), a little along it
-    const rx = w[0] * h - vx, ry = w[1] * h - vy, rz = w[2] * h - vz, rn = rx * N[i] + ry * N[i + 1] + rz * N[i + 2];
-    const k = K[p];
-    vx += N[i] * rn * k + rx * 0.006; vy += N[i + 1] * rn * k + ry * 0.006; vz += N[i + 2] * rn * k + rz * 0.006;
-    O[i] = X[i]; O[i + 1] = X[i + 1]; O[i + 2] = X[i + 2];
-    X[i] += vx * 0.998; X[i + 1] += vy * 0.998 - 9.8 * h * h; X[i + 2] += vz * 0.998;
+function abaLeafShape(x, px, py, L, W, rot, fill, vein) {
+  x.save(); x.translate(px, py); x.rotate(rot); x.beginPath(); x.moveTo(0, 0); x.bezierCurveTo(L * 0.3, -W, L * 0.75, -W * 0.8, L, 0); x.bezierCurveTo(L * 0.75, W * 0.8, L * 0.3, W, 0, 0);
+  x.fillStyle = fill; x.fill(); if (vein) { x.strokeStyle = vein; x.lineWidth = Math.max(1, W * 0.12); x.beginPath(); x.moveTo(L * 0.05, 0); x.quadraticCurveTo(L * 0.5, -W * 0.12, L * 0.92, 0); x.stroke();
+    for (let k = 1; k < 5; k++) { const t = k / 5; x.beginPath(); x.moveTo(L * t, 0); x.lineTo(L * (t + 0.1), -W * 0.55 * (1 - t * 0.5)); x.moveTo(L * t, 0); x.lineTo(L * (t + 0.1), W * 0.55 * (1 - t * 0.5)); x.stroke(); } }
+  x.restore();
+}
+function abaGoldLeaf(x, px, py, L, W, rot) {
+  const g = x.createLinearGradient(px - L, py - L, px + L, py + L); g.addColorStop(0, abaRGB(ABA_COL.gold, 1.15)); g.addColorStop(1, abaRGB(ABA_COL.goldD, 0.95));
+  abaLeafShape(x, px, py, L, W, rot, g, abaRGB(ABA_COL.goldD, 0.7));
+}
+// the borders every leaf shares: a gilt band at the top edge and at the foot, each with a fine coloured line
+function abaBorders(x, line) {
+  abaBand(x, 0.955, 1.0, abaRGB(ABA_COL.gold)); abaBand(x, 0.942, 0.952, line);
+  abaBand(x, 0.44, 0.475, abaRGB(ABA_COL.gold)); abaBand(x, 0.478, 0.486, line);
+  x.fillStyle = abaRGB(ABA_COL.goldD, 0.8);
+  for (let a = -ABA.SPAN / 2; a <= ABA.SPAN / 2; a += 0.022) { const [px, py] = abaP(0.978, a); x.beginPath(); x.arc(px, py, 2.6, 0, TAU); x.fill(); }
+}
+
+function abaPintado() {
+  const c = casaCv(ABA_W, ABA_H), x = c.getContext("2d"), r = seeded(301);
+  abaSilk(x, ABA_COL.ivory, 41);
+  abaClip(x, 0.486, 0.942); x.save(); x.clip();
+  // gilded sprays first, then roses and buds over them
+  const roses = [[0, 0.71, 96, ABA_COL.deep], [-0.24, 0.66, 66, ABA_COL.burg], [0.25, 0.65, 68, ABA_COL.burg], [-0.7, 0.71, 70, ABA_COL.deep], [0.71, 0.71, 70, ABA_COL.deep],
+                 [-1.12, 0.7, 54, ABA_COL.burg], [1.12, 0.7, 54, ABA_COL.burg], [-0.45, 0.82, 40, ABA_COL.burg], [0.47, 0.82, 40, ABA_COL.burg]];
+  for (const [a, rad, R] of roses) for (let k = 0; k < 6; k++) { const [px, py] = abaP(rad + (r() - 0.5) * 0.05, a + (r() - 0.5) * 0.16); abaGoldLeaf(x, px, py, R * (1.1 + r() * 0.6), R * 0.38, r() * TAU); }
+  // a garland: a thin gilt tendril running along the arc
+  x.strokeStyle = abaRGB(ABA_COL.gold, 0.95); x.lineWidth = 3; x.beginPath();
+  for (let a = -1.3; a <= 1.3; a += 0.01) { const [px, py] = abaP(0.72 + Math.sin(a * 9) * 0.04, a); a === -1.3 ? x.moveTo(px, py) : x.lineTo(px, py); } x.stroke();
+  for (let a = -1.25; a <= 1.25; a += 0.12) { const [px, py] = abaP(0.72 + Math.sin(a * 9) * 0.04, a); abaGoldLeaf(x, px, py, 34, 12, a + (Math.sin(a * 9) > 0 ? -2.2 : -0.9)); }
+  for (const [a, rad, R, col] of roses) { const [px, py] = abaP(rad, a); abaRose(x, px, py, R, col, a, r); }
+  // buds and small blossoms scattered among the sprays
+  for (let i = 0; i < 16; i++) { const a = -1.3 + r() * 2.6, rad = 0.55 + r() * 0.33, [px, py] = abaP(rad, a);
+    if (i % 2) { x.save(); x.translate(px, py); x.rotate(a + (r() - 0.5)); x.fillStyle = abaRGB(ABA_COL.deep, 0.9); x.beginPath(); x.ellipse(0, -14, 11, 18, 0, 0, TAU); x.fill();
+      x.fillStyle = abaRGB(ABA_COL.gold, 0.9); x.beginPath(); x.moveTo(-12, 0); x.quadraticCurveTo(0, -18, 12, 0); x.quadraticCurveTo(0, 6, -12, 0); x.fill(); x.restore(); }
+    else for (let k = 0; k < 5; k++) { const an = k / 5 * TAU; x.fillStyle = abaRGB(ABA_COL.ivory, 1.04); x.beginPath(); x.ellipse(px + Math.cos(an) * 9, py + Math.sin(an) * 9, 8, 5.5, an, 0, TAU); x.fill();
+      x.strokeStyle = abaRGB(ABA_COL.burg, 1, 0.5); x.lineWidth = 1; x.stroke(); } }
+  x.restore();
+  abaBorders(x, abaRGB(ABA_COL.burg));
+  return { c };
+}
+
+function abaEncaje() {
+  const c = casaCv(ABA_W, ABA_H), x = c.getContext("2d"), a = casaCv(ABA_W, ABA_H), y = a.getContext("2d"), r = seeded(77);
+  x.fillStyle = abaRGB(ABA_COL.ivory, 1.02); x.fillRect(0, 0, ABA_W, ABA_H);
+  y.fillStyle = "#000"; y.fillRect(0, 0, ABA_W, ABA_H);
+  // the net (réseau): fine twisted threads in a diamond mesh
+  y.save(); abaClip(y, 0.44, 1.0); y.clip(); y.strokeStyle = "#fff"; y.lineWidth = 6;
+  x.save(); abaClip(x, 0.44, 1.0); x.clip(); x.strokeStyle = abaRGB(ABA_COL.ivory, 0.86); x.lineWidth = 2;
+  for (let k = -ABA_W; k < ABA_W * 2; k += 30) for (const ctx of [y, x]) { ctx.beginPath(); ctx.moveTo(k, 0); ctx.lineTo(k + ABA_H * 0.58, ABA_H); ctx.moveTo(k, 0); ctx.lineTo(k - ABA_H * 0.58, ABA_H); ctx.stroke(); }
+  y.restore(); x.restore();
+  // the motifs: solid cloth-stitch shapes outlined with a raised cord (cordonnet)
+  const solid = (path, holes) => { y.fillStyle = "#fff"; y.beginPath(); path(y); y.fill(); x.fillStyle = abaRGB(ABA_COL.ivory, 1.03); x.beginPath(); path(x); x.fill();
+    x.strokeStyle = abaRGB(ABA_COL.ivory, 0.72); x.lineWidth = 3; x.stroke(); x.strokeStyle = abaRGB([255, 252, 245]); x.lineWidth = 1.2; x.stroke();
+    if (holes) { y.fillStyle = "#000"; y.beginPath(); holes(y); y.fill(); x.strokeStyle = abaRGB(ABA_COL.ivory, 0.7); x.lineWidth = 2; x.beginPath(); holes(x); x.stroke(); } };
+  const flower = (px, py, R, n, rot) => solid(ctx => { for (let k = 0; k < n; k++) { const an = rot + k / n * TAU; ctx.moveTo(px, py); ctx.ellipse(px + Math.cos(an) * R * 0.55, py + Math.sin(an) * R * 0.55, R * 0.5, R * 0.3, an, 0, TAU); } ctx.moveTo(px + R * 0.25, py); ctx.arc(px, py, R * 0.25, 0, TAU); },
+    ctx => { for (let k = 0; k < n; k++) { const an = rot + k / n * TAU; ctx.moveTo(px, py); ctx.ellipse(px + Math.cos(an) * R * 0.58, py + Math.sin(an) * R * 0.58, R * 0.2, R * 0.08, an, 0, TAU); } ctx.moveTo(px + R * 0.09, py); ctx.arc(px, py, R * 0.09, 0, TAU); });
+  const scroll = (px, py, R, rot, dir) => solid(ctx => { ctx.moveTo(px, py); for (let t = 0; t <= 1.001; t += 0.05) { const an = rot + dir * t * 4.2, rr = R * (1 - t * 0.75); ctx.lineTo(px + Math.cos(an) * rr, py + Math.sin(an) * rr); }
+    for (let t = 1; t >= 0; t -= 0.05) { const an = rot + dir * t * 4.2, rr = R * (1 - t * 0.75) - R * 0.16 * (1 - t * 0.6); ctx.lineTo(px + Math.cos(an) * rr, py + Math.sin(an) * rr); } ctx.closePath(); });
+  for (let i = 0; i < 9; i++) { const an = -1.24 + i * 0.31, [px, py] = abaP(0.71, an); flower(px, py, i % 2 ? 64 : 84, i % 2 ? 6 : 8, an);
+    const [sx, sy] = abaP(0.71, an + 0.155); scroll(sx, sy - 14, 50, an * 2 + 1, 1); scroll(sx, sy + 16, 44, an * 2 - 2, -1);
+    const [ux, uy] = abaP(0.86, an + 0.08); flower(ux, uy, 34, 5, an); const [lx, ly] = abaP(0.56, an + 0.08); flower(lx, ly, 28, 5, an); }
+  // the foot: a solid band with a row of eyelets
+  y.fillStyle = "#fff"; abaClip(y, 0.44, 0.5, 0.04); y.fill(); x.fillStyle = abaRGB(ABA_COL.ivory, 1.02); abaClip(x, 0.44, 0.5, 0.04); x.fill();
+  for (let an = -1.38; an <= 1.38; an += 0.045) { const [px, py] = abaP(0.47, an); y.fillStyle = "#000"; y.beginPath(); y.arc(px, py, 5, 0, TAU); y.fill(); x.strokeStyle = abaRGB(ABA_COL.ivory, 0.7); x.lineWidth = 1.5; x.beginPath(); x.arc(px, py, 6, 0, TAU); x.stroke(); }
+  // the scalloped edge: everything outside the scallops is cut away, and a cord runs round it
+  const h0 = ABA.SPAN / 2 + 0.03, n = 30, st = h0 * 2 / n;
+  const edge = ctx => { ctx.moveTo(...abaP(0.95, -h0)); for (let k = 0; k < n; k++) { const an = -h0 + k * st; ctx.quadraticCurveTo(...abaP(1.04, an + st / 2), ...abaP(0.95, an + st)); } };
+  y.save(); y.globalCompositeOperation = "destination-in"; y.beginPath(); y.moveTo(...abaP(0.44, -h0)); edge(y); y.lineTo(...abaP(0.44, h0)); y.closePath(); y.fillStyle = "#fff"; y.fill(); y.restore();
+  y.save(); y.strokeStyle = "#fff"; y.lineWidth = 9; y.beginPath(); edge(y); y.stroke(); y.restore();
+  x.save(); x.strokeStyle = abaRGB(ABA_COL.ivory, 0.75); x.lineWidth = 5; x.beginPath(); edge(x); x.stroke(); x.restore();
+  return { c, a };
+}
+
+// a carnation (clavel), embroidered: a fan of frilled petals in satin stitch, a gold calyx and stem
+function abaClavel(x, px, py, R, col, rot, r) {
+  x.save(); x.translate(px, py); x.rotate(rot);
+  x.strokeStyle = abaRGB(ABA_COL.gold); x.lineWidth = R * 0.07; x.lineCap = "round";
+  x.beginPath(); x.moveTo(0, R * 0.25); x.quadraticCurveTo(R * 0.15, R * 0.9, -R * 0.1, R * 1.5); x.stroke();
+  abaLeafShape(x, -R * 0.02, R * 1.05, R * 0.75, R * 0.12, 2.5, abaRGB(ABA_COL.gold, 0.95), null); abaLeafShape(x, R * 0.05, R * 0.8, R * 0.7, R * 0.11, 0.5, abaRGB(ABA_COL.gold, 0.95), null);
+  for (let layer = 0; layer < 3; layer++) {
+    const s = 1 - layer * 0.22, spread = 1.15 - layer * 0.2;
+    x.save(); x.beginPath(); x.moveTo(0, R * 0.25);
+    for (let k = 0; k <= 22; k++) { const an = -Math.PI / 2 - spread + spread * 2 * k / 22, rr = R * s * (k % 2 ? 0.92 : 1.0) * (0.94 + r() * 0.08); x.lineTo(Math.cos(an) * rr, R * 0.25 + Math.sin(an) * rr); }
+    x.closePath(); x.clip();
+    // satin stitch: long parallel threads radiating from the calyx, each catching the light a little differently
+    for (let k = -60; k <= 60; k++) { const an = -Math.PI / 2 + k / 60 * spread * 1.05; x.strokeStyle = abaRGB(col, (0.8 + layer * 0.12) * (k % 2 ? 1.12 : 0.92) * (0.9 + 0.2 * Math.cos(an + 2.2)));
+      x.lineWidth = 2.2; x.beginPath(); x.moveTo(0, R * 0.25); x.lineTo(Math.cos(an) * R * 1.1, R * 0.25 + Math.sin(an) * R * 1.1); x.stroke(); }
+    x.restore();
   }
-  for (let it = 0; it < 6; it++) for (let m = 0, M = cr.length; m < M; m++) {
-    const a = ci[m * 2], b = ci[m * 2 + 1], wa = W[a], wb = W[b], ws = wa + wb; if (ws === 0) continue;
-    const ia = a * 3, ib = b * 3, dx = X[ib] - X[ia], dy = X[ib + 1] - X[ia + 1], dz = X[ib + 2] - X[ia + 2], d = Math.sqrt(dx * dx + dy * dy + dz * dz) || 1e-6;
-    const f = (d - cr[m]) / d * ck[m] / ws;
-    X[ia] += dx * f * wa; X[ia + 1] += dy * f * wa; X[ia + 2] += dz * f * wa; X[ib] -= dx * f * wb; X[ib + 1] -= dy * f * wb; X[ib + 2] -= dz * f * wb;
+  x.fillStyle = abaRGB(ABA_COL.gold); x.beginPath(); x.moveTo(-R * 0.2, R * 0.12); x.lineTo(R * 0.2, R * 0.12); x.lineTo(R * 0.09, R * 0.42); x.lineTo(-R * 0.09, R * 0.42); x.closePath(); x.fill();
+  x.strokeStyle = abaRGB(ABA_COL.goldD); x.lineWidth = 1.5; for (let k = 0; k < 5; k++) { x.beginPath(); x.moveTo(-R * 0.17 + k * R * 0.085, R * 0.14); x.lineTo(-R * 0.08 + k * R * 0.04, R * 0.4); x.stroke(); }
+  x.restore();
+}
+function abaBordado() {
+  const c = casaCv(ABA_W, ABA_H), x = c.getContext("2d"), r = seeded(515);
+  abaSilk(x, ABA_COL.burg, 52);
+  abaClip(x, 0.486, 0.942); x.save(); x.clip();
+  for (let i = 0; i < 7; i++) { const an = -1.12 + i * 0.373, [px, py] = abaP(0.6, an); abaClavel(x, px, py, i === 3 ? 112 : 92, i % 2 ? ABA_COL.ivory : [176, 34, 44], an, r); }
+  for (let i = 0; i < 6; i++) { const an = -0.93 + i * 0.373, [px, py] = abaP(0.87, an); abaClavel(x, px, py, 44, [176, 34, 44], an, r); }
+  // a chain stitch in gold along the top and foot of the field
+  x.strokeStyle = abaRGB(ABA_COL.gold); x.lineWidth = 2;
+  for (const rad of [0.925, 0.505]) for (let an = -1.38; an < 1.38; an += 0.014) { const [px, py] = abaP(rad, an); x.beginPath(); x.ellipse(px, py, 5, 2.4, an, 0, TAU); x.stroke(); }
+  x.restore();
+  abaBorders(x, abaRGB(ABA_COL.ivory, 0.95));
+  return { c };
+}
+function abaGrande() {
+  const c = casaCv(ABA_W, ABA_H), x = c.getContext("2d"), r = seeded(808);
+  abaSilk(x, ABA_COL.deep, 63);
+  abaClip(x, 0.486, 0.942); x.save(); x.clip();
+  // gilded arabesques: pairs of C-scrolls springing from a stem, with acanthus leaves
+  const sc = (px, py, R, rot, dir) => { x.save(); x.translate(px, py); x.rotate(rot); x.strokeStyle = abaRGB(ABA_COL.gold, 1.05); x.lineCap = "round";
+    for (let t = 0; t < 1; t += 0.02) { const a0 = dir * t * 5, a1 = dir * (t + 0.02) * 5, r0 = R * (1 - t * 0.8), r1 = R * (1 - (t + 0.02) * 0.8); x.lineWidth = 7 * (1 - t * 0.7);
+      x.beginPath(); x.moveTo(Math.cos(a0) * r0, Math.sin(a0) * r0); x.lineTo(Math.cos(a1) * r1, Math.sin(a1) * r1); x.stroke(); }
+    for (let k = 1; k < 5; k++) { const t = k * 0.16, an = dir * t * 5, rr = R * (1 - t * 0.8); abaGoldLeaf(x, Math.cos(an) * rr, Math.sin(an) * rr, R * 0.38 * (1 - t * 0.5), R * 0.1, an + dir * 1.9); }
+    x.restore(); };
+  // a gilt rinceau: a running stem that curls into a spiral at every crest, leaves along it, rosettes between
+  const stem = an => 0.69 + Math.sin(an * 7.3) * 0.08;
+  x.strokeStyle = abaRGB(ABA_COL.gold, 1.05); x.lineCap = "round"; x.lineWidth = 7; x.beginPath();
+  for (let an = -1.38; an <= 1.38; an += 0.004) { const [px, py] = abaP(stem(an), an); an === -1.38 ? x.moveTo(px, py) : x.lineTo(px, py); } x.stroke();
+  for (let k = -3; k <= 3; k++) { const ac = (k + 0.25) * Math.PI / 7.3 * 2 / 2 * 2 / 2, crest = (Math.PI / 2 + k * Math.PI) / 7.3, up = k % 2 === 0;
+    const [cx0, cy0] = abaP(stem(crest) + (up ? 0.075 : -0.075), crest);
+    x.lineWidth = 6; x.beginPath();
+    for (let t = 0; t <= 1; t += 0.01) { const an2 = (up ? -1 : 1) * t * 4.6 + (up ? Math.PI / 2 : -Math.PI / 2) + crest, rr = 75 * (1 - t * 0.78);
+      const px = cx0 + Math.cos(an2) * rr, py = cy0 + Math.sin(an2) * rr; t === 0 ? x.moveTo(px, py) : x.lineTo(px, py); x.lineWidth = 6 * (1 - t * 0.6); } x.stroke();
+    x.fillStyle = abaRGB(ABA_COL.gold); x.beginPath(); x.arc(cx0, cy0, 10, 0, TAU); x.fill();
+    const tr = crest + Math.PI / 7.3, [rx, ry] = abaP(stem(tr), tr);
+    for (let q = 0; q < 6; q++) { const an3 = q / 6 * TAU; x.fillStyle = abaRGB(ABA_COL.gold, 1.08); x.beginPath(); x.ellipse(rx + Math.cos(an3) * 16, ry + Math.sin(an3) * 16, 13, 7, an3, 0, TAU); x.fill(); }
+    x.fillStyle = abaRGB(ABA_COL.deep, 0.8); x.beginPath(); x.arc(rx, ry, 6, 0, TAU); x.fill(); }
+  for (let an = -1.32; an <= 1.32; an += 0.065) { const [px, py] = abaP(stem(an), an), d = Math.cos(an * 7.3); abaGoldLeaf(x, px, py, 40, 12, an + (Math.floor(an / 0.065) % 2 ? -0.6 : -2.5) + d * 0.3); }
+  // a gilt lace border (puntilla) under the top edge: little arches and dots
+  x.strokeStyle = abaRGB(ABA_COL.gold, 1.05); x.lineWidth = 3;
+  for (let an = -1.38; an < 1.38; an += 0.04) { x.beginPath(); const [ax, ay] = abaP(0.9, an), [bx, by] = abaP(0.9, an + 0.04), [cx2, cy2] = abaP(0.935, an + 0.02); x.moveTo(ax, ay); x.quadraticCurveTo(cx2, cy2, bx, by); x.stroke();
+    const [dx, dy] = abaP(0.918, an + 0.02); x.fillStyle = abaRGB(ABA_COL.gold); x.beginPath(); x.arc(dx, dy, 3, 0, TAU); x.fill(); }
+  // the cartouche: an ivory oval framed in gilt, with a painted rose
+  const [cx, cy] = abaP(0.7, 0); x.save(); x.translate(cx, cy);
+  x.fillStyle = abaRGB(ABA_COL.gold); x.beginPath(); x.ellipse(0, 0, 150, 118, 0, 0, TAU); x.fill();
+  x.fillStyle = abaRGB(ABA_COL.goldD); x.beginPath(); x.ellipse(0, 0, 140, 108, 0, 0, TAU); x.fill();
+  x.fillStyle = abaRGB(ABA_COL.ivory); x.beginPath(); x.ellipse(0, 0, 132, 100, 0, 0, TAU); x.fill(); x.restore();
+  for (let k = 0; k < 7; k++) abaLeafShape(x, cx + (r() - 0.5) * 120, cy + (r() - 0.5) * 70, 50 + r() * 30, 15, r() * TAU, abaRGB([88, 92, 60], 0.9), abaRGB([50, 54, 30]));
+  abaRose(x, cx - 30, cy, 54, ABA_COL.deep, 0.2, r); abaRose(x, cx + 50, cy + 20, 36, ABA_COL.burg, 1, r);
+  x.restore();
+  abaBorders(x, abaRGB(ABA_COL.ivory, 0.95));
+  return { c };
+}
+
+// the sticks: carved and pierced where they show below the leaf, a slender blade behind it; guards whole and inlaid
+function abaStick(wood, guard) {
+  const w = 96, h = 1024, c = casaCv(w, h), x = c.getContext("2d"), a = casaCv(w, h), y = a.getContext("2d"), r = seeded(guard ? 9 : 5);
+  const Y = v => h - v * h;                                   // v: 0 at the pivot end, 1 at the tip
+  x.fillStyle = abaRGB(wood); x.fillRect(0, 0, w, h);
+  for (let i = 0; i < 40; i++) { const x0 = r() * w; x.strokeStyle = abaRGB(wood, r() < 0.5 ? 0.78 : 1.15, 0.5); x.lineWidth = 0.6 + r() * 1.4; x.beginPath();
+    for (let v = 0; v <= 1; v += 0.02) { const px = x0 + Math.sin(v * 9 + i) * 3; v ? x.lineTo(px, Y(v)) : x.moveTo(px, Y(v)); } x.stroke(); }
+  y.fillStyle = "#000"; y.fillRect(0, 0, w, h); y.fillStyle = "#fff";
+  const half = v => guard ? (v < 0.04 ? 0.42 : 0.47 - v * 0.08) : v < 0.46 ? 0.45 - Math.abs(v - 0.25) * 0.12 : Math.max(0.12, 0.28 - (v - 0.46) * 0.3);
+  y.beginPath(); y.moveTo(w / 2 - half(0.03) * w, Y(0.03));
+  for (let v = 0.03; v <= 0.985; v += 0.005) y.lineTo(w / 2 - half(v) * w, Y(v));
+  for (let v = 0.985; v >= 0.03; v -= 0.005) y.lineTo(w / 2 + half(v) * w, Y(v));
+  y.closePath(); y.fill(); y.beginPath(); y.arc(w / 2, Y(0.03), w * 0.42, 0, TAU); y.fill();
+  const hole = (px, py, rx, ry) => { y.fillStyle = "#000"; y.beginPath(); y.ellipse(px, py, rx, ry, 0, 0, TAU); y.fill();
+    x.strokeStyle = abaRGB(wood, 0.45); x.lineWidth = 4; x.beginPath(); x.ellipse(px, py, rx + 2, ry + 2, 0, 0, TAU); x.stroke(); };
+  y.fillStyle = "#000"; y.beginPath(); y.arc(w / 2, Y(0.03), w * 0.09, 0, TAU); y.fill();     // the rivet hole
+  if (!guard) {
+    // fretwork: a lozenge between pairs of round piercings, repeated up the stick
+    for (let v = 0.1; v < 0.42; v += 0.085) { hole(w / 2, Y(v), w * 0.13, h * 0.026); hole(w * 0.27, Y(v + 0.042), w * 0.07, w * 0.07); hole(w * 0.73, Y(v + 0.042), w * 0.07, w * 0.07); }
+    x.strokeStyle = abaRGB(ABA_COL.gold, 0.95); x.lineWidth = 2;
+    for (const s of [-1, 1]) { x.beginPath(); for (let v = 0.06; v < 0.44; v += 0.005) { const px = w / 2 + s * (half(v) - 0.07) * w; v === 0.06 ? x.moveTo(px, Y(v)) : x.lineTo(px, Y(v)); } x.stroke(); }
+  } else {
+    // the guard: a carved vine inlaid with gold running its whole length
+    x.strokeStyle = abaRGB(wood, 0.5); x.lineWidth = 5; x.beginPath(); for (let v = 0.06; v < 0.97; v += 0.004) { const px = w / 2 + Math.sin(v * 40) * w * 0.18; v === 0.06 ? x.moveTo(px, Y(v)) : x.lineTo(px, Y(v)); } x.stroke();
+    x.strokeStyle = abaRGB(ABA_COL.gold, 1.05); x.lineWidth = 2.5; x.stroke();
+    for (let v = 0.08; v < 0.95; v += 0.0785) { abaGoldLeaf(x, w / 2 + Math.sin(v * 40) * w * 0.18, Y(v), w * 0.28, w * 0.07, Math.cos(v * 40) > 0 ? 0.4 : 2.7); }
+    for (const s of [-1, 1]) { x.strokeStyle = abaRGB(ABA_COL.gold, 0.9); x.lineWidth = 2; x.beginPath(); x.moveTo(w / 2 + s * 0.4 * w, Y(0.07)); x.lineTo(w / 2 + s * 0.37 * w, Y(0.96)); x.stroke(); }
   }
-  // the floor: silk that reaches it slides and settles
-  for (let p = 0; p < n; p++) { const i = p * 3; if (X[i + 1] < 0.004) { X[i + 1] = 0.004; O[i] = X[i] - (X[i] - O[i]) * 0.5; O[i + 2] = X[i + 2] - (X[i + 2] - O[i + 2]) * 0.5; O[i + 1] = X[i + 1]; } }
+  return { c, a };
 }
-function silNormals(cl) {
-  SIL.meshes.forEach(M => { const pos = M.geo.attributes.position.array, X = cl.X;
-    pos.set(X.subarray(M.t0 * 3, (M.t0 + M.count) * 3));
-    M.geo.attributes.position.needsUpdate = true; M.geo.computeVertexNormals();
-    cl.N.set(M.geo.attributes.normal.array, M.t0 * 3); });
-}
-// the fabric: dyed by hand, so the colour varies a little; a fine crêpe weave in the surface
-function silTex(col, seed, sheer) {
-  const S2 = 1024, c = casaCv(S2, S2), x = c.getContext("2d"), r = seeded(seed);
-  x.fillStyle = col; x.fillRect(0, 0, S2, S2);
-  for (let i = 0; i < 0; i++) { const g = x.createRadialGradient(r() * S2, r() * S2, 0, r() * S2, r() * S2, 150 + r() * 300);
-    const d = r() < 0.5; g.addColorStop(0, d ? "rgba(40,0,8,0.05)" : "rgba(200,60,60,0.035)"); g.addColorStop(1, "rgba(0,0,0,0)"); x.fillStyle = g; x.fillRect(0, 0, S2, S2); }
-  for (let i = 0; i < 1400; i++) { x.fillStyle = `rgba(${r() < 0.5 ? "30,0,6" : "230,140,140"},${0.03 + r() * 0.04})`; const v = r() < 0.5; x.fillRect(r() * S2, r() * S2, v ? 1 : 20 + r() * 120, v ? 20 + r() * 120 : 1); }
-  const hc = casaCv(512, 512), y = hc.getContext("2d"), img = y.createImageData(512, 512), d = img.data;
-  for (let j = 0; j < 512; j++) for (let i = 0; i < 512; i++) {
-    // a crêpe: warp and weft threads with a twist that makes the surface pebbled
-    const wv = Math.sin(i * Math.PI / 2) * 0.5 + 0.5, wf = Math.sin(j * Math.PI / 2) * 0.5 + 0.5, cr = hash2(i >> 1, j >> 1);
-    const v = (sheer ? 0.5 + (wv * wf - 0.25) * 0.6 : 0.45 + (wv + wf) * 0.15 + cr * 0.25) * 255, k = (j * 512 + i) * 4; d[k] = d[k + 1] = d[k + 2] = v; d[k + 3] = 255; }
-  y.putImageData(img, 0, 0);
-  return { c, nrm: casaNormal(hc, sheer ? 0.6 : 1.1) };
-}
-function silBackdrop() {
-  const c = casaCv(1024, 1024), x = c.getContext("2d"), r = seeded(77);
-  x.fillStyle = "#CFC4B4"; x.fillRect(0, 0, 1024, 1024);
-  for (let i = 0; i < 40; i++) { const g = x.createRadialGradient(r() * 1024, r() * 1024, 0, r() * 1024, r() * 1024, 200 + r() * 400);
-    g.addColorStop(0, r() < 0.5 ? "rgba(120,100,80,0.05)" : "rgba(255,245,230,0.05)"); g.addColorStop(1, "rgba(0,0,0,0)"); x.fillStyle = g; x.fillRect(0, 0, 1024, 1024); }
+
+function abaWall() {
+  const w = 1024, h = 1024, c = casaCv(w, h), x = c.getContext("2d"), r = seeded(19);
+  x.fillStyle = "#E3D8C5"; x.fillRect(0, 0, w, h);
+  for (let i = 0; i < 70; i++) { const g = x.createRadialGradient(r() * w, r() * h, 0, r() * w, r() * h, 60 + r() * 220); g.addColorStop(0, r() < 0.5 ? "rgba(140,115,85,0.05)" : "rgba(255,248,236,0.06)"); g.addColorStop(1, "rgba(0,0,0,0)"); x.fillStyle = g; x.fillRect(0, 0, w, h); }
+  for (let i = 0; i < 9000; i++) { x.fillStyle = `rgba(${r() < 0.5 ? "120,100,80" : "255,250,240"},${0.04 + r() * 0.05})`; x.fillRect(r() * w, r() * h, 1, 1); }
+  const v = x.createRadialGradient(w / 2, h * 0.45, w * 0.2, w / 2, h * 0.5, w * 0.75); v.addColorStop(0, "rgba(0,0,0,0)"); v.addColorStop(1, "rgba(60,40,25,0.18)"); x.fillStyle = v; x.fillRect(0, 0, w, h);
   return c;
 }
-function silBuild() {
+
+// the formations: for each of the seven fans, pivot (x, y), direction (radians, 0 = opening upward), size, widest opening
+function abaForm(k, i, rot) {
+  const D = Math.PI / 180;
+  if (k === 0) return i < 6 ? [0, 0.03, i * 60 * D + rot, 0.27, 2.0] : [0, -0.36, rot * 0.15, 0.6, 2.62];
+  if (k === 1) { const ord = [-3, -2, -1, 1, 2, 3, 0][i], R = [0.62, 0.52, 0.47, 0.42][Math.abs(ord)];
+    return [0, -0.43, -ord * 23 * D + rot * 0.12, R, ord === 0 ? 1.6 : 1.3]; }
+  if (i === 6) return [0, 0.04, rot * 0.12, 0.3, 2.7];
+  const s = i < 3 ? -1 : 1, j = i % 3;
+  return [s * 0.52, -0.37, s * (22 + j * 26) * D + rot * 0.1, [0.42, 0.38, 0.34][j], 2.1];
+}
+function abaBuild() {
   const T = THREE, scene = new T.Scene();
   const r = new T.WebGLRenderer({ antialias: true, alpha: false, powerPreference: "high-performance" });
   r.setPixelRatio(1); r.shadowMap.enabled = true; r.shadowMap.type = T.PCFSoftShadowMap;
   r.outputEncoding = T.sRGBEncoding; r.toneMapping = T.ACESFilmicToneMapping; r.toneMappingExposure = 0.95;
   const aniso = r.capabilities.getMaxAnisotropy(), lc = h => new T.Color(h).convertSRGBToLinear();
-  const BG = lc(0xC9BDAC);
-  scene.background = BG; scene.fog = new T.Fog(BG, 5.5, 13);
-  // a soft warm room for the sheen to pick up
+  const tex = (cv, srgb) => { const t = new T.CanvasTexture(cv); t.anisotropy = aniso; if (srgb) t.encoding = T.sRGBEncoding; return t; };
+  scene.background = lc(0xE3D8C5);
   const env = new T.Scene();
-  env.add(new T.Mesh(new T.SphereGeometry(20, 32, 16), new T.MeshBasicMaterial({ color: 0x6a5e52, side: T.BackSide })));
-  const sb = (x, y, z, w, h, c) => { const m = new T.Mesh(new T.PlaneGeometry(w, h), new T.MeshBasicMaterial({ color: c, side: T.DoubleSide })); m.position.set(x, y, z); m.lookAt(0, 1.2, 0); env.add(m); };
-  sb(-6, 8, 7, 6, 4, 0xfff0dc); sb(5, 6, -8, 4, 6, 0xffd9b0);
+  env.add(new T.Mesh(new T.SphereGeometry(20, 32, 16), new T.MeshBasicMaterial({ color: 0x8a7a66, side: T.BackSide })));
+  const sb = new T.Mesh(new T.PlaneGeometry(8, 5), new T.MeshBasicMaterial({ color: 0xfff1de, side: T.DoubleSide })); sb.position.set(-6, 7, 8); sb.lookAt(0, 0, 0); env.add(sb);
   scene.environment = new T.PMREMGenerator(r).fromScene(env, 0.04).texture;
-  // the gallery: a seamless backdrop, floor curving up into the wall
-  const shape = [];
-  for (let i = 0; i <= 24; i++) { const a = i / 24 * Math.PI / 2; shape.push([Math.sin(a) * 1.2, 1.2 - Math.cos(a) * 1.2]); }
-  const cyc = new T.BufferGeometry(), cv = [], cuv = [], cix = [], prof = [[0, 0, 6]].concat(shape.map(([s, y]) => [y, 0, -2.4 - s])).concat([[6, 0, -3.6]]);
-  prof.forEach(([y, , z], j) => { for (let i = 0; i <= 40; i++) { const x = -7 + i * 14 / 40; cv.push(x, y, z); cuv.push(i / 40 * 3, j / prof.length * 3); } });
-  for (let j = 0; j < prof.length - 1; j++) for (let i = 0; i < 40; i++) { const a = j * 41 + i, b = a + 1, c = a + 41, d = c + 1; cix.push(a, b, c, b, d, c); }
-  cyc.setAttribute("position", new T.Float32BufferAttribute(cv, 3)); cyc.setAttribute("uv", new T.Float32BufferAttribute(cuv, 2)); cyc.setIndex(cix); cyc.computeVertexNormals();
-  const bt = new T.CanvasTexture(silBackdrop()); bt.encoding = T.sRGBEncoding; bt.wrapS = bt.wrapT = T.RepeatWrapping;
-  const back = new T.Mesh(cyc, new T.MeshStandardMaterial({ map: bt, roughness: 1, envMapIntensity: 0.25 })); back.receiveShadow = true; scene.add(back);
-  // light: a large warm key from the upper left that throws soft shadows, a stronger backlight from the upper right
-  // that glows through the cloth, and warm fill from the room
-  const key = new T.DirectionalLight(0xffe6c8, 1.9); key.position.set(-3.2, 5.5, 4.2); key.target.position.set(0, 1, 0);
-  key.castShadow = true; key.shadow.mapSize.set(2048, 2048); Object.assign(key.shadow.camera, { left: -3, right: 3, top: 3.5, bottom: -1.5, near: 1, far: 16 });
-  key.shadow.bias = -0.0004; key.shadow.normalBias = 0.02; key.shadow.radius = 6;
-  const backL = new T.DirectionalLight(0xffc896, 1.6); backL.position.set(2.6, 3.6, -4.5); backL.target.position.set(0, 1.2, 0);
-  scene.add(key, key.target, backL, backL.target, new T.HemisphereLight(0xfff1e0, 0x8a7460, 0.38));
-  // the cloth materials: matte, the light passing through the thin fabric from behind
-  const fabric = (col, seed, sheer) => { const t = silTex(col, seed, sheer), map = new T.CanvasTexture(t.c), nm = new T.CanvasTexture(t.nrm);
-    map.encoding = T.sRGBEncoding; [map, nm].forEach(q => { q.wrapS = q.wrapT = T.RepeatWrapping; q.anisotropy = aniso; });
-    const m = new T.MeshPhysicalMaterial({ map, normalMap: nm, normalScale: new T.Vector2(0.35, 0.35), roughness: sheer ? 0.6 : 0.72, sheen: 0.5, sheenRoughness: 0.6,
-      sheenColor: lc(col).multiplyScalar(1.3), side: T.DoubleSide, envMapIntensity: 0.35, transparent: !!sheer, opacity: sheer ? 0.78 : 1 });
-    const trans = lc(col).multiplyScalar(sheer ? 1.3 : 0.8);
-    m.onBeforeCompile = sh => { sh.uniforms.uTrans = { value: trans };
-      sh.fragmentShader = "uniform vec3 uTrans;\n" + sh.fragmentShader.replace("#include <lights_fragment_end>", `#include <lights_fragment_end>
-        #if NUM_DIR_LIGHTS > 0
-        for (int i = 0; i < NUM_DIR_LIGHTS; i++) { float bt = max(dot(-normal, directionalLights[i].direction), 0.); reflectedLight.directDiffuse += directionalLights[i].color * bt * uTrans * diffuseColor.rgb; }
-        #endif`); };
-    return m; };
-  const mats = [fabric("#510A17", 11, false), fabric("#6E1A25", 12, true)];
-  const cl = silCloth(), meshes = [];
-  cl.panels.forEach((pn, k) => {
-    const { cols, rows, Q } = pn, count = cols * rows, uv = new Float32Array(count * 2), ind = [];
-    for (let v = 0; v < rows; v++) for (let u = 0; u < cols; u++) { const i = v * cols + u; uv[i * 2] = u * Q.sp / 0.35; uv[i * 2 + 1] = v * Q.sp / 0.35; }
-    for (let v = 0; v < rows - 1; v++) for (let u = 0; u < cols - 1; u++) { const a = v * cols + u, b = a + 1, c = a + cols, d = c + 1; ind.push(a, c, b, b, c, d); }
-    const geo = new T.BufferGeometry(); geo.setAttribute("position", new T.BufferAttribute(new Float32Array(count * 3), 3)); geo.setAttribute("uv", new T.BufferAttribute(uv, 2)); geo.setIndex(ind);
-    const mesh = new T.Mesh(geo, mats[k]); mesh.castShadow = mesh.receiveShadow = true; mesh.frustumCulled = false; mesh.renderOrder = k; scene.add(mesh);
-    meshes.push({ geo, t0: pn.t0, count });
+  // the wall the fans are mounted before
+  const wall = new T.Mesh(new T.PlaneGeometry(4, 2.8), new T.MeshStandardMaterial({ map: tex(abaWall(), true), roughness: 0.95, envMapIntensity: 0.2 }));
+  wall.position.set(0, 0, -0.07); wall.receiveShadow = true; scene.add(wall);
+  const key = new T.DirectionalLight(0xfff0dc, 1.9); key.position.set(-1.3, 1.7, 2.4); key.target.position.set(0, 0, 0);
+  key.castShadow = true; key.shadow.mapSize.set(2048, 2048); Object.assign(key.shadow.camera, { left: -1.1, right: 1.1, top: 0.9, bottom: -0.9, near: 0.5, far: 6 });
+  key.shadow.bias = -0.0005; key.shadow.normalBias = 0.004; key.shadow.radius = 5;
+  scene.add(key, key.target, new T.HemisphereLight(0xfff4e6, 0xb8a58a, 0.45));
+  const fill = new T.DirectionalLight(0xffe2c0, 0.25); fill.position.set(1.5, -0.4, 2); scene.add(fill);
+  // materials
+  const leafMat = (L, alpha) => { const m = new T.MeshStandardMaterial({ map: tex(L.c, true), roughness: 0.82, side: T.DoubleSide, envMapIntensity: 0.4 });
+    if (alpha) Object.assign(m, { alphaMap: tex(L.a), alphaTest: 0.5, alphaToCoverage: true }); return m; };
+  const leaves = { pintado: leafMat(abaPintado()), encaje: leafMat(abaEncaje(), true), bordado: leafMat(abaBordado()), grande: leafMat(abaGrande()) };
+  const stickMat = (wood, guard) => { const s = abaStick(wood, guard); return new T.MeshStandardMaterial({ map: tex(s.c, true), alphaMap: tex(s.a), alphaTest: 0.5, alphaToCoverage: true, roughness: 0.55, side: T.DoubleSide, envMapIntensity: 0.6 }); };
+  const woods = { light: [196, 160, 112], dark: [86, 52, 34], red: [104, 40, 30] };
+  const sticks = {}; for (const k in woods) sticks[k] = [stickMat(woods[k], false), stickMat(woods[k], true)];
+  const gilt = new T.MeshStandardMaterial({ color: lc(0xb8975a), metalness: 1, roughness: 0.42, envMapIntensity: 0.9 });
+  const kinds = [["pintado", "light"], ["encaje", "dark"], ["bordado", "light"], ["pintado", "red"], ["encaje", "dark"], ["bordado", "light"], ["grande", "dark"]];
+  const { NR, FR, SPAN, R1 } = ABA, FC = (NR - 1) * 2;
+  const fans = kinds.map(([leaf, wood], i) => {
+    const grp = new T.Group(), R = 1;
+    const pos = new Float32Array((FC + 1) * FR * 3), uv = new Float32Array((FC + 1) * FR * 2), ind = [];
+    for (let j = 0; j < FR; j++) for (let c = 0; c <= FC; c++) { const k = j * (FC + 1) + c, rad = 0.44 + 0.555 * j / (FR - 1), a = -SPAN / 2 + SPAN * c / FC, [px, py] = abaP(rad, a); uv[k * 2] = px / ABA_W; uv[k * 2 + 1] = 1 - py / ABA_H; }
+    for (let j = 0; j < FR - 1; j++) for (let c = 0; c < FC; c++) { const a = j * (FC + 1) + c, b = a + 1, d = a + FC + 1, e = d + 1; ind.push(a, b, d, b, e, d); }
+    const geo = new T.BufferGeometry(); geo.setAttribute("position", new T.BufferAttribute(pos, 3)); geo.setAttribute("uv", new T.BufferAttribute(uv, 2)); geo.setIndex(ind);
+    const leafM = new T.Mesh(geo, leaves[leaf]); leafM.castShadow = leafM.receiveShadow = true; grp.add(leafM);
+    const ribs = [];
+    for (let k = 0; k < NR; k++) { const guard = k === 0 || k === NR - 1, L = 0.985, wd = 0.085;
+      const g2 = new T.PlaneGeometry(wd, L); g2.translate(0, L / 2 - 0.03 * L, 0);
+      const m = new T.Mesh(g2, sticks[wood][guard ? 1 : 0]); m.castShadow = m.receiveShadow = true; grp.add(m); ribs.push(m); }
+    const rivet = new T.Mesh(new T.CylinderGeometry(0.026, 0.026, 0.03, 24), gilt); rivet.rotation.x = Math.PI / 2; rivet.castShadow = true; grp.add(rivet);
+    scene.add(grp);
+    const f0 = abaForm(0, i, 0);
+    return { grp, geo, ribs, rivet, o: { x: 0.3, v: 0 }, fl: 0, z: i === 6 ? 0 : 0.014 * (i + 1),
+      p: { x: f0[0], y: f0[1], vx: 0, vy: 0 }, dir: { x: f0[2], v: 0 }, R: { x: f0[3], v: 0 }, M: { x: f0[4], v: 0 }, tilt: Math.sin(i * 2.1) * 0.08 };
   });
-  const cam = new T.PerspectiveCamera(30, 1.45, 0.1, 40); cam.position.set(0, 1.25, 5.0); cam.lookAt(0, 1.12, 0);
-  Object.assign(SIL, { r, scene, cam, meshes, ready: true, cl });
-  silReset();
+  const cam = new T.PerspectiveCamera(22, 1.45, 0.1, 20); cam.position.set(0, 0, 2.45); cam.lookAt(0, 0, 0);
+  Object.assign(ABA, { r, scene, cam, fans, FC, ready: true });
 }
-function silReset() {
-  const cl = SIL.cl = silCloth(); 
-  Object.assign(sil, { E: 0, ph: 0, gust: [0, 0, 0], vort: 0, queue: [] });
-  silPin(cl);
-  for (let s = 0; s < 240; s++) { silStep(cl, 1 / 120); if (s % 10 === 0) silNormals(cl); }   // let it hang and settle into its folds
-  cl.O.set(cl.X); silNormals(cl);
-}
-function silMove(h) {
-  // the holds drift in slow arcs whose pace is the music's; each springs back from the sweeps
-  SIL.cl.panels.forEach((pn, k) => pn.holds.forEach((Hd, j) => { const a = Hd.a, H = Hd.home, ph = sil.ph + k * 1.7 + j * 2.3;
-    const tg = [H[0] + Math.sin(ph * 0.9) * 0.3 * (0.3 + sil.E), H[1] + Math.sin(ph * 0.55) * 0.05, H[2] + Math.sin(ph * 0.7 + 1) * 0.35 * (0.3 + sil.E)];
-    for (let d = 0; d < 3; d++) { a.v[d] += ((tg[d] - a.p[d]) * 5.5 - a.v[d] * 2.8) * h; a.p[d] += a.v[d] * h; } }));
-  const gd = Math.exp(-h * 1.6); sil.gust = sil.gust.map(q => q * gd); sil.vort *= Math.exp(-h * 1.1);
+function abaShape(f) {
+  const { NR, FR, SPAN } = ABA, FC = ABA.FC, A = Math.max(0.05, Math.min(SPAN, f.o.x));
+  const pos = f.geo.attributes.position.array, full = SPAN / FC * 1.12, half = A / FC, dep = Math.sqrt(Math.max(0, full * full - half * half)) * 0.5;
+  for (let j = 0; j < FR; j++) { const rad = 0.44 + 0.555 * j / (FR - 1);
+    for (let c = 0; c <= FC; c++) { const a = -A / 2 + A * c / FC, k = (j * (FC + 1) + c) * 3, z = c % 2 ? (c % 4 === 1 ? 1 : -1) * rad * dep : 0;
+      pos[k] = Math.sin(a) * rad; pos[k + 1] = Math.cos(a) * rad; pos[k + 2] = z; } }
+  f.geo.attributes.position.needsUpdate = true; f.geo.computeVertexNormals();
+  // the sticks lie under the leaf, each a hair behind the last; the guards close over the front and the back
+  f.ribs.forEach((m, k) => { const a = -A / 2 + A * k / (NR - 1); m.rotation.set(0, 0, -a);
+    m.position.z = k === NR - 1 ? dep + 0.012 : k === 0 ? -dep - 0.012 : -0.008 - k * 0.0012; });
+  f.rivet.position.z = 0;
 }
 function flamencoScene(t, dt, box) {
   if (typeof THREE === "undefined") return;
-  if (!SIL.ready) silBuild();
-  if (t - sil.lastT > 1.5) silReset();
-  sil.lastT = t; sil.now = t;
+  if (!ABA.ready) abaBuild();
+  if (t - aba.lastT > 1.5) { Object.assign(aba, { E: 0, ph: 0, form: 0, rot: { x: 0, v: 0 }, rotT: 0, hush: 0, queue: [] }); ABA.fans.forEach(f => { f.o.x = 0.2; f.fl = 0; }); }
+  aba.lastT = t; aba.now = t;
   const h = box.h, w = Math.min(box.w, h * 1.45), x0 = Math.round((box.x + (box.w - w) / 2) * DPR) / DPR, y0 = box.y;
-  const k = Math.min(DPR, Math.sqrt(7e6 / (w * h))), pw = Math.round(w * k), ph = Math.round(h * k);
-  if (SIL.pw !== pw || SIL.ph !== ph) { SIL.pw = pw; SIL.ph = ph; SIL.r.setSize(pw, ph, false); SIL.cam.aspect = pw / ph; SIL.cam.updateProjectionMatrix(); }
+  const k = Math.min(DPR, Math.sqrt(8e6 / (w * h))), pw = Math.round(w * k), ph = Math.round(h * k);
+  if (ABA.pw !== pw || ABA.ph !== ph) { ABA.pw = pw; ABA.ph = ph; ABA.r.setSize(pw, ph, false); ABA.cam.aspect = pw / ph; ABA.cam.updateProjectionMatrix(); }
   dt = Math.min(dt, 1 / 20);
-  // the cloth steps at 120 Hz at most; a slow frame slows the whole piece down rather than destabilising the silk
-  const steps = Math.max(1, Math.min(3, Math.round(dt * 120))), hs = Math.min(dt / steps, 1 / 110);
   const energy = Math.min(1, S.bass * 0.45 + S.mid * 0.45 + S.high * 0.2);
-  sil.E += (energy - sil.E) * Math.min(1, dt * 1.5);
-  sil.ph += steps * hs * (0.1 + sil.E * 0.7);
-  // a sweep reaches the second length of fabric a moment after the first
-  sil.queue = sil.queue.filter(q => { if (t >= q.at) { const a = SIL.cl.panels[q.k].holds[q.j].a; a.v[0] += q.vx; a.v[1] += q.vy; a.v[2] += q.vz; return false; } return true; });
-  for (let s = 0; s < steps; s++) { silMove(hs); silPin(SIL.cl); silStep(SIL.cl, hs); }
-  silNormals(SIL.cl);
-  SIL.r.render(SIL.scene, SIL.cam);
-  g.drawImage(SIL.r.domElement, x0, y0, w, h);
+  aba.E += (energy - aba.E) * Math.min(1, dt * 1.4);
+  aba.ph += dt * (0.12 + aba.E * 0.7);
+  aba.hush *= Math.exp(-dt * 1.3);
+  aba.rot.v += ((aba.rotT + Math.sin(aba.ph * 0.23) * 0.12 - aba.rot.x) * 4 - aba.rot.v * 3.6) * dt; aba.rot.x += aba.rot.v * dt;
+  aba.queue = aba.queue.filter(q => { if (t >= q.at) { const f = ABA.fans[q.i]; f.fl = Math.min(1, f.fl + q.amt); return false; } return true; });
+  ABA.fans.forEach((f, i) => {
+    f.fl *= Math.exp(-dt * 0.85);
+    const [px, py, dir, R, M] = abaForm(aba.form, i, aba.rot.x);
+    const sp = (s, tg, k2, c2) => { s.v += ((tg - s.x) * k2 - s.v * c2) * dt; s.x += s.v * dt; };
+    f.p.vx += ((px - f.p.x) * 5 - f.p.vx * 4.4) * dt; f.p.x += f.p.vx * dt; f.p.vy += ((py - f.p.y) * 5 - f.p.vy * 4.4) * dt; f.p.y += f.p.vy * dt;
+    let dd = dir - f.dir.x; dd = Math.atan2(Math.sin(dd), Math.cos(dd)); f.dir.v += (dd * 5 - f.dir.v * 4.4) * dt; f.dir.x += f.dir.v * dt;
+    sp(f.R, R, 5, 4.4); sp(f.M, M, 5, 4.4);
+    // how open: the music's loudness, a slow breath of its own, and the flicks of the beats; closed while re-forming
+    const q = Math.max(0.03, Math.min(1, 0.14 + 0.42 * aba.E + 0.05 * Math.sin(aba.ph * 1.3 + i * 1.1) + f.fl)) * (1 - aba.hush * 0.9);
+    f.o.v += ((q * f.M.x - f.o.x) * 55 - f.o.v * 10) * dt; f.o.x += f.o.v * dt;       // a little overshoot: the snap of a fan flicked open
+    abaShape(f);
+    f.grp.position.set(f.p.x, f.p.y, f.z); f.grp.rotation.set(0, f.tilt + f.o.v * 0.004, f.dir.x); f.grp.scale.setScalar(f.R.x);
+  });
+  ABA.r.render(ABA.scene, ABA.cam);
+  g.drawImage(ABA.r.domElement, x0, y0, w, h);
 }
 function flamencoBeat() {
-  if (!SIL.ready) return;
-  const s = Math.min(1, 0.15 + S.bass * 0.9 + S.pulse * 0.2), t = sil.now;
-  sil.side *= -1; sil.n++;
-  const dz = ((sil.n % 3) - 1) * 0.5;
-  // a sweep: the holds swing across, the fabric twists, and the air follows the sweep
-  // one hand leads each sweep and the other answers; the strongest beats move all four, the chiffon a moment later
-  const lead = sil.n % 2, big = s > 0.6;
-  SIL.cl.panels.forEach((pn, k) => { if (k === 1 && !big && sil.n % 3) return;
-    pn.holds.forEach((H, j) => { const m = j === lead ? 1 : 0.45;
-      sil.queue.push({ k, j, at: t + k * 0.14 + (j === lead ? 0 : 0.09), vx: sil.side * (0.5 + s * 1.8) * m, vy: s * 0.3 * m, vz: dz * (0.4 + s) * m }); }); });
-  sil.gust[0] += sil.side * (0.6 + s * 2.4); sil.gust[2] += dz * s * 1.2; sil.gust[1] += s * 0.25;
-  if (s > 0.72 && t - sil.lastVort > 4) { sil.vort = 1; sil.lastVort = t; }    // the strongest beats: a rising spiral of air
+  if (!ABA.ready) return;
+  const s = Math.min(1, 0.15 + S.bass * 0.9 + S.pulse * 0.2), t = aba.now;
+  aba.n++; aba.side *= -1;
+  // a ripple of opening running round the group, as a dancer's wrists turn one after the other
+  const ring = aba.form === 1 ? [0, 1, 2, 3, 4, 5] : [0, 1, 2, 3, 4, 5], k0 = (aba.n * 2) % 6;
+  for (let j = 0; j < 3; j++) aba.queue.push({ i: ring[(k0 + j * aba.side + 6) % 6], at: t + j * 0.08, amt: (0.28 + 0.55 * s) * (1 - j * 0.25) });
+  if (aba.n % 4 === 0) aba.queue.push({ i: 6, at: t + 0.05, amt: 0.3 + 0.4 * s });
+  if (s > 0.7 && t - aba.lastStrong > 2.2) {
+    aba.lastStrong = t; aba.strongN++;
+    ABA.fans.forEach((f, i) => aba.queue.push({ i, at: t + i * 0.035, amt: 0.9 }));          // all of them, almost at once
+    aba.rotT += aba.side * Math.PI / 6;                                                     // and the formation turns by one petal
+    if (aba.strongN % 3 === 0) { aba.form = (aba.form + 1) % 3; aba.hush = 1; }            // gather, close, and re-form
+  }
 }
