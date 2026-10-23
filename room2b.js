@@ -289,21 +289,19 @@ function azulejoBeat() {
 
 
 // ----------------------------------------------------------------
-// 2iii  ABANICOS. Seven Spanish folding fans mounted before a warm plaster wall, as in a display of
-// decorative arts: each with a pleated leaf over carved, pierced wooden sticks and two guard sticks inlaid
-// with gold, a gilt rivet at the pivot. Four kinds of leaf, all in burgundy, ivory, muted gold and deep red:
-//   pintado   ivory silk painted in gouache with roses, buds and gilded leaves (as painted in Valencia)
-//   encaje    ivory bobbin lace: flowers and scrolls joined by a net, a scalloped edge; the sticks show through
-//   bordado   burgundy silk embroidered in satin stitch with carnations in ivory, deep red and gold
-//   grande    the large fan: deep red silk with gilded arabesques and a painted cartouche
-// The leaf is folded for real: as a fan closes its pleats deepen, its sticks slide over one another.
-// The music is the choreography. Every beat opens the next fans in turn, a ripple running round the
-// group like the turn of a dancer's wrists; strong beats open them all at once and turn the whole
-// formation; louder music keeps them wider open, quiet music lets them breathe nearly closed. Every few
-// strong beats the fans gather, close and re-form: a rosette, a fan of fans, two arms crossing.
+// 2iii  ABANICOS. Three Spanish folding fans mounted before a warm plaster wall, as in a display of
+// decorative arts: a large fan in the centre, deep red silk with a gilded rinceau and a painted rose in a
+// cartouche, and on either side a fan of ivory bobbin lace whose carved, pierced sticks show through it.
+// Each has its own fixed pivot and resting angle; nothing drifts. The leaf is pleated and folds for real.
+// The music only opens, closes and gently tilts them: beats flick them open in turn (left, centre, right,
+// centre, like the compás), a strong beat opens all three to their fullest, louder passages hold them
+// wider, quiet ones let them settle back to a calm, half-open rest. Before anything is drawn, the furthest
+// reach of every fan at its widest opening and tilt is measured, and the camera is framed to that with a
+// margin, for whatever shape the window is, so no fan can ever leave the frame.
+// (The leaf designs pintado and bordado below are kept from the earlier seven-fan version but unused.)
 // ----------------------------------------------------------------
 const ABA = { ready: false, SPAN: 2.8, NR: 18, FR: 8, R1: 0.44 };
-const aba = { E: 0, ph: 0, n: 0, side: 1, form: 0, rot: { x: 0, v: 0 }, rotT: 0, strongN: 0, lastStrong: -9, hush: 0, queue: [], lastT: -9, now: 0 };
+const aba = { E: 0, ph: 0, n: 0, side: 1, lastStrong: -9, queue: [], lastT: -9, now: 0 };
 const ABA_COL = { burg: [84, 16, 30], deep: [112, 18, 28], ivory: [238, 229, 210], gold: [182, 148, 86], goldD: [126, 96, 50] };
 const abaRGB = (c, k = 1, a = 1) => `rgba(${c.map(q => Math.round(Math.max(0, Math.min(255, q * k)))).join(",")},${a})`;
 
@@ -524,15 +522,23 @@ function abaWall() {
   return c;
 }
 
-// the formations: for each of the seven fans, pivot (x, y), direction (radians, 0 = opening upward), size, widest opening
-function abaForm(k, i, rot) {
-  const D = Math.PI / 180;
-  if (k === 0) return i < 6 ? [0, 0.03, i * 60 * D + rot, 0.27, 2.0] : [0, -0.36, rot * 0.15, 0.6, 2.62];
-  if (k === 1) { const ord = [-3, -2, -1, 1, 2, 3, 0][i], R = [0.62, 0.52, 0.47, 0.42][Math.abs(ord)];
-    return [0, -0.43, -ord * 23 * D + rot * 0.12, R, ord === 0 ? 1.6 : 1.3]; }
-  if (i === 6) return [0, 0.04, rot * 0.12, 0.3, 2.7];
-  const s = i < 3 ? -1 : 1, j = i % 3;
-  return [s * 0.52, -0.37, s * (22 + j * 26) * D + rot * 0.1, [0.42, 0.38, 0.34][j], 2.1];
+// the three fans: pivot (x, y), resting direction (radians, positive leans left), size, widest opening, resting openness
+const ABA_FANS = [
+  { leaf: "encaje", wood: "dark", x: -0.74, y: -0.25, dir: 0.75, R: 0.36, M: 2.5, rest: 0.68, z: 0.035 },
+  { leaf: "grande", wood: "dark", x: 0, y: -0.3, dir: 0, R: 0.56, M: 2.75, rest: 0.62, z: 0 },
+  { leaf: "encaje", wood: "dark", x: 0.74, y: -0.25, dir: -0.75, R: 0.36, M: 2.5, rest: 0.68, z: 0.035 }
+];
+const ABA_SWAY = 0.07;                    // the most any fan may tilt away from its resting direction
+// the furthest any fan can reach: its whole arc at the widest opening and tilt, and the sticks' ends at the pivot
+function abaBounds() {
+  let x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9;
+  const add = (x, y) => { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); };
+  for (const F of ABA_FANS) {
+    const lo = -F.dir - F.M / 2 - ABA_SWAY, hi = -F.dir + F.M / 2 + ABA_SWAY;
+    for (let k = 0; k <= 60; k++) { const p = lo + (hi - lo) * k / 60; add(F.x + Math.sin(p) * F.R * 1.02, F.y + Math.cos(p) * F.R * 1.02); }
+    for (let k = 0; k < 16; k++) { const p = k / 16 * TAU; add(F.x + Math.cos(p) * F.R * 0.07, F.y + Math.sin(p) * F.R * 0.07); }
+  }
+  return { x0, x1, y0, y1 };
 }
 function abaBuild() {
   const T = THREE, scene = new T.Scene();
@@ -548,7 +554,7 @@ function abaBuild() {
   scene.environment = new T.PMREMGenerator(r).fromScene(env, 0.04).texture;
   // the wall the fans are mounted before
   const wall = new T.Mesh(new T.PlaneGeometry(4, 2.8), new T.MeshStandardMaterial({ map: tex(abaWall(), true), roughness: 0.95, envMapIntensity: 0.2 }));
-  wall.position.set(0, 0, -0.07); wall.receiveShadow = true; scene.add(wall);
+  wall.position.set(0, 0, -0.07); wall.receiveShadow = true; scene.add(wall); ABA.wall = wall;
   const key = new T.DirectionalLight(0xfff0dc, 1.9); key.position.set(-1.3, 1.7, 2.4); key.target.position.set(0, 0, 0);
   key.castShadow = true; key.shadow.mapSize.set(2048, 2048); Object.assign(key.shadow.camera, { left: -1.1, right: 1.1, top: 0.9, bottom: -0.9, near: 0.5, far: 6 });
   key.shadow.bias = -0.0005; key.shadow.normalBias = 0.004; key.shadow.radius = 5;
@@ -562,9 +568,8 @@ function abaBuild() {
   const woods = { light: [196, 160, 112], dark: [86, 52, 34], red: [104, 40, 30] };
   const sticks = {}; for (const k in woods) sticks[k] = [stickMat(woods[k], false), stickMat(woods[k], true)];
   const gilt = new T.MeshStandardMaterial({ color: lc(0xb8975a), metalness: 1, roughness: 0.42, envMapIntensity: 0.9 });
-  const kinds = [["pintado", "light"], ["encaje", "dark"], ["bordado", "light"], ["pintado", "red"], ["encaje", "dark"], ["bordado", "light"], ["grande", "dark"]];
   const { NR, FR, SPAN, R1 } = ABA, FC = (NR - 1) * 2;
-  const fans = kinds.map(([leaf, wood], i) => {
+  const fans = ABA_FANS.map((F, i) => { const { leaf, wood } = F;
     const grp = new T.Group(), R = 1;
     const pos = new Float32Array((FC + 1) * FR * 3), uv = new Float32Array((FC + 1) * FR * 2), ind = [];
     for (let j = 0; j < FR; j++) for (let c = 0; c <= FC; c++) { const k = j * (FC + 1) + c, rad = 0.44 + 0.555 * j / (FR - 1), a = -SPAN / 2 + SPAN * c / FC, [px, py] = abaP(rad, a); uv[k * 2] = px / ABA_W; uv[k * 2 + 1] = 1 - py / ABA_H; }
@@ -577,12 +582,15 @@ function abaBuild() {
       const m = new T.Mesh(g2, sticks[wood][guard ? 1 : 0]); m.castShadow = m.receiveShadow = true; grp.add(m); ribs.push(m); }
     const rivet = new T.Mesh(new T.CylinderGeometry(0.026, 0.026, 0.03, 24), gilt); rivet.rotation.x = Math.PI / 2; rivet.castShadow = true; grp.add(rivet);
     scene.add(grp);
-    const f0 = abaForm(0, i, 0);
-    return { grp, geo, ribs, rivet, o: { x: 0.3, v: 0 }, fl: 0, z: i === 6 ? 0 : 0.014 * (i + 1),
-      p: { x: f0[0], y: f0[1], vx: 0, vy: 0 }, dir: { x: f0[2], v: 0 }, R: { x: f0[3], v: 0 }, M: { x: f0[4], v: 0 }, tilt: Math.sin(i * 2.1) * 0.08 };
+    // each fan stays on its own anchor: position, size and depth are set once and never animated
+    grp.position.set(F.x, F.y, F.z); grp.scale.setScalar(F.R); grp.rotation.set(0, 0, F.dir);
+    return { F, grp, geo, ribs, rivet, o: { x: F.rest * F.M, v: 0 }, fl: 0, sw: { x: 0, v: 0 } };
   });
-  const cam = new T.PerspectiveCamera(22, 1.45, 0.1, 20); cam.position.set(0, 0, 2.45); cam.lookAt(0, 0, 0);
-  Object.assign(ABA, { r, scene, cam, fans, FC, ready: true });
+  const bb = abaBounds();
+  Object.assign(key.shadow.camera, { left: bb.x0 - 0.3, right: bb.x1 + 0.3, top: bb.y1 + 0.3, bottom: bb.y0 - 0.3 }); key.shadow.camera.updateProjectionMatrix();
+  const cam = new T.PerspectiveCamera(24, 1.45, 0.1, 20);
+  Object.assign(ABA, { r, scene, cam, fans, FC, bb, ready: true });
+  abaFrame(1.45);
 }
 function abaShape(f) {
   const { NR, FR, SPAN } = ABA, FC = ABA.FC, A = Math.max(0.05, Math.min(SPAN, f.o.x));
@@ -596,33 +604,45 @@ function abaShape(f) {
     m.position.z = k === NR - 1 ? dep + 0.012 : k === 0 ? -dep - 0.012 : -0.008 - k * 0.0012; });
   f.rivet.position.z = 0;
 }
+// frame the camera on the measured reach of the fans, centred, with a margin of wall all round
+function abaFrame(aspect) {
+  const { bb, cam } = ABA, cx = (bb.x0 + bb.x1) / 2, cy = (bb.y0 + bb.y1) / 2;
+  const hw = (bb.x1 - bb.x0) / 2 * 1.16, hh = (bb.y1 - bb.y0) / 2 * 1.2, tn = Math.tan(cam.fov / 2 * Math.PI / 180);
+  const d = Math.max(hh / tn, hw / (tn * aspect)) + 0.05;          // + the fans' own depth in front of the wall
+  cam.aspect = aspect; cam.position.set(cx, cy, d); cam.lookAt(cx, cy, 0); cam.updateProjectionMatrix();
+  // the wall always fills the view, however tall or wide the window is
+  const vh = 2 * (d + 0.07) * tn, vw = vh * aspect;
+  ABA.wall.position.set(cx, cy, -0.07); ABA.wall.scale.setScalar(Math.max(1, vw / 4 * 1.08, vh / 2.8 * 1.08));
+}
+function abaReset() {
+  Object.assign(aba, { E: 0, ph: 0, n: 0, queue: [], lastStrong: -9 });
+  ABA.fans.forEach(f => { f.o.x = f.F.rest * f.F.M; f.o.v = 0; f.fl = 0; f.sw.x = f.sw.v = 0; });
+}
 function flamencoScene(t, dt, box) {
   if (typeof THREE === "undefined") return;
   if (!ABA.ready) abaBuild();
-  if (t - aba.lastT > 1.5) { Object.assign(aba, { E: 0, ph: 0, form: 0, rot: { x: 0, v: 0 }, rotT: 0, hush: 0, queue: [] }); ABA.fans.forEach(f => { f.o.x = 0.2; f.fl = 0; }); }
+  if (t - aba.lastT > 1.5) abaReset();
   aba.lastT = t; aba.now = t;
   const h = box.h, w = Math.min(box.w, h * 1.45), x0 = Math.round((box.x + (box.w - w) / 2) * DPR) / DPR, y0 = box.y;
   const k = Math.min(DPR, Math.sqrt(8e6 / (w * h))), pw = Math.round(w * k), ph = Math.round(h * k);
-  if (ABA.pw !== pw || ABA.ph !== ph) { ABA.pw = pw; ABA.ph = ph; ABA.r.setSize(pw, ph, false); ABA.cam.aspect = pw / ph; ABA.cam.updateProjectionMatrix(); }
+  if (ABA.pw !== pw || ABA.ph !== ph) { ABA.pw = pw; ABA.ph = ph; ABA.r.setSize(pw, ph, false); abaFrame(pw / ph); }
   dt = Math.min(dt, 1 / 20);
   const energy = Math.min(1, S.bass * 0.45 + S.mid * 0.45 + S.high * 0.2);
   aba.E += (energy - aba.E) * Math.min(1, dt * 1.4);
-  aba.ph += dt * (0.12 + aba.E * 0.7);
-  aba.hush *= Math.exp(-dt * 1.3);
-  aba.rot.v += ((aba.rotT + Math.sin(aba.ph * 0.23) * 0.12 - aba.rot.x) * 4 - aba.rot.v * 3.6) * dt; aba.rot.x += aba.rot.v * dt;
-  aba.queue = aba.queue.filter(q => { if (t >= q.at) { const f = ABA.fans[q.i]; f.fl = Math.min(1, f.fl + q.amt); return false; } return true; });
+  aba.ph = (aba.ph + dt * (0.1 + aba.E * 0.6)) % 1000;
+  aba.queue = aba.queue.filter(q => { if (t >= q.at) { const f = ABA.fans[q.i]; f.fl = Math.min(0.6, Math.max(f.fl, q.amt)); f.sw.v += q.tilt; return false; } return true; });
   ABA.fans.forEach((f, i) => {
-    f.fl *= Math.exp(-dt * 0.85);
-    const [px, py, dir, R, M] = abaForm(aba.form, i, aba.rot.x);
-    const sp = (s, tg, k2, c2) => { s.v += ((tg - s.x) * k2 - s.v * c2) * dt; s.x += s.v * dt; };
-    f.p.vx += ((px - f.p.x) * 5 - f.p.vx * 4.4) * dt; f.p.x += f.p.vx * dt; f.p.vy += ((py - f.p.y) * 5 - f.p.vy * 4.4) * dt; f.p.y += f.p.vy * dt;
-    let dd = dir - f.dir.x; dd = Math.atan2(Math.sin(dd), Math.cos(dd)); f.dir.v += (dd * 5 - f.dir.v * 4.4) * dt; f.dir.x += f.dir.v * dt;
-    sp(f.R, R, 5, 4.4); sp(f.M, M, 5, 4.4);
-    // how open: the music's loudness, a slow breath of its own, and the flicks of the beats; closed while re-forming
-    const q = Math.max(0.03, Math.min(1, 0.14 + 0.42 * aba.E + 0.05 * Math.sin(aba.ph * 1.3 + i * 1.1) + f.fl)) * (1 - aba.hush * 0.9);
-    f.o.v += ((q * f.M.x - f.o.x) * 55 - f.o.v * 10) * dt; f.o.x += f.o.v * dt;       // a little overshoot: the snap of a fan flicked open
+    const F = f.F;
+    f.fl *= Math.exp(-dt * 1.1);
+    // how open: a calm rest, wider with louder music, a slow breath, and the flick of the beats; always within its limits
+    const q = Math.max(0.3, Math.min(1, F.rest + 0.22 * aba.E + 0.03 * (0.3 + aba.E) * Math.sin(aba.ph * 1.2 + i * 2.1) + f.fl));
+    f.o.v += ((q * F.M - f.o.x) * 45 - f.o.v * 9.5) * dt; f.o.x += f.o.v * dt;        // a slight overshoot: the snap of a fan flicked open
+    if (f.o.x > F.M) { f.o.x = F.M; f.o.v = Math.min(0, f.o.v); } if (f.o.x < 0.12) { f.o.x = 0.12; f.o.v = Math.max(0, f.o.v); }
+    // a small tilt with the music that always springs back to the fan's own resting angle
+    f.sw.v += ((0.03 * aba.E * Math.sin(aba.ph * 0.7 + i * 1.9) - f.sw.x) * 12 - f.sw.v * 5.5) * dt; f.sw.x += f.sw.v * dt;
+    if (Math.abs(f.sw.x) > ABA_SWAY) { f.sw.x = Math.sign(f.sw.x) * ABA_SWAY; f.sw.v = 0; }
     abaShape(f);
-    f.grp.position.set(f.p.x, f.p.y, f.z); f.grp.rotation.set(0, f.tilt + f.o.v * 0.004, f.dir.x); f.grp.scale.setScalar(f.R.x);
+    f.grp.rotation.z = F.dir + f.sw.x;
   });
   ABA.r.render(ABA.scene, ABA.cam);
   g.drawImage(ABA.r.domElement, x0, y0, w, h);
@@ -630,15 +650,10 @@ function flamencoScene(t, dt, box) {
 function flamencoBeat() {
   if (!ABA.ready) return;
   const s = Math.min(1, 0.15 + S.bass * 0.9 + S.pulse * 0.2), t = aba.now;
-  aba.n++; aba.side *= -1;
-  // a ripple of opening running round the group, as a dancer's wrists turn one after the other
-  const ring = aba.form === 1 ? [0, 1, 2, 3, 4, 5] : [0, 1, 2, 3, 4, 5], k0 = (aba.n * 2) % 6;
-  for (let j = 0; j < 3; j++) aba.queue.push({ i: ring[(k0 + j * aba.side + 6) % 6], at: t + j * 0.08, amt: (0.28 + 0.55 * s) * (1 - j * 0.25) });
-  if (aba.n % 4 === 0) aba.queue.push({ i: 6, at: t + 0.05, amt: 0.3 + 0.4 * s });
-  if (s > 0.7 && t - aba.lastStrong > 2.2) {
-    aba.lastStrong = t; aba.strongN++;
-    ABA.fans.forEach((f, i) => aba.queue.push({ i, at: t + i * 0.035, amt: 0.9 }));          // all of them, almost at once
-    aba.rotT += aba.side * Math.PI / 6;                                                     // and the formation turns by one petal
-    if (aba.strongN % 3 === 0) { aba.form = (aba.form + 1) % 3; aba.hush = 1; }            // gather, close, and re-form
-  }
+  aba.n++;
+  // the beats go round the three fans like the compás: left, centre, right, centre
+  const i = [0, 1, 2, 1][aba.n % 4], side = i === 0 ? 1 : i === 2 ? -1 : (aba.n % 8 < 4 ? 1 : -1);
+  aba.queue.push({ i, at: t, amt: 0.18 + 0.32 * s, tilt: side * (0.15 + 0.25 * s) });
+  // a strong beat opens all three to their fullest, the centre first
+  if (s > 0.7 && t - aba.lastStrong > 1.5) { aba.lastStrong = t; [1, 0, 2].forEach((j, k) => aba.queue.push({ i: j, at: t + k * 0.06, amt: 0.6, tilt: 0 })); }
 }
