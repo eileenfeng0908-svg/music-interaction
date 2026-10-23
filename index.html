@@ -2458,7 +2458,7 @@ function eishoScene(t, dt, box) {
 function eishoBeat() { if (S.bass > 0.25 && eisho.paw > -0.05) eisho.pawV -= 2.2 + S.bass * 1.5; }
 
 // ================================================================
-// THE "?" ROOM — music that never repeats. Every minute or so a new piece begins, in a different style,
+// THE "?" ROOM — music that never repeats. Every minute or so a new piece begins, in one of 24 styles,
 // key and speed, and the wall stays empty so the audience can imagine their own picture.
 // ================================================================
 function mysteryKit(ctx, out) {
@@ -2592,10 +2592,75 @@ const MYSTERY = {
   // a melody on oud-like strings and a hand drum, in a scale with an augmented second
   maqam(K) { const f = tuner(rnd(130, 165), MODES.hijaz), st = 60 / rnd(100, 116) / 4, mel = tune(16, 3, 11, 0.6);
     return [st, (i, t) => { const s = i % 16; if (s === 0 || s === 7) K.tom(t, 75, 0.9, 0.3); if ([3, 10, 12].includes(s)) K.rim(t, 1.2); if (s % 2 && Math.random() < 0.4) K.shaker(t, 0.5);
-      const m = mel[Math.floor(i / 2) % mel.length]; if (i % 2 === 0 && m !== null) K.pluck(t, f(m), st * 4, 0.9, 0.55, Math.random() < 0.12 ? 1 : 0); if (i % 32 === 0) K.pad(t, [f(-7), f(-3)], st * 32, 0.8, 500); }]; }
+      const m = mel[Math.floor(i / 2) % mel.length]; if (i % 2 === 0 && m !== null) K.pluck(t, f(m), st * 4, 0.9, 0.55, Math.random() < 0.12 ? 1 : 0); if (i % 32 === 0) K.pad(t, [f(-7), f(-3)], st * 32, 0.8, 500); }]; },
+  // tango: a marcato pulse on every beat, a 3-3-2 bass, a reed-like tune in harmonic minor
+  tango(K) { const f = tuner(rnd(110, 147), MODES.harmonic), prog = pick([[0, 4, 4, 0], [0, 3, 4, 0], [0, 5, 3, 4]]), st = 60 / rnd(112, 122) / 4, mel = tune(16, 7, 14, 0.6);
+    return [st, (i, t) => { const s = i % 16, d = prog[Math.floor(i / 16) % 4];
+      if ([0, 6, 12].includes(s)) K.pluck(t, f(d + (s === 6 ? 4 : 0) - 7), st * 4, 1, 0.3);
+      if (s % 4 === 0) f.chord(d + 7, 3).forEach(x => K.piano(t, x, st * 1.2, s === 0 ? 0.6 : 0.4));
+      if (s === 14) K.tom(t, 70, 0.5, 0.2);
+      const m = mel[Math.floor(i / 2) % mel.length]; if (i % 2 === 0 && m !== null && Math.floor(i / 32) % 2) K.strings(t, f(m), st * 1.9, 0.9); }]; },
+  // reggae: the chord on the offbeat, a one-drop beat, a deep round bass
+  reggae(K) { const f = tuner(rnd(98, 123), pick([MODES.major, MODES.dorian])), prog = pick([[0, 3, 0, 4], [0, 5, 3, 4], [1, 4, 1, 4]]), st = 60 / rnd(72, 80) / 4, line = [0, null, null, 0, null, 2, 4, null, 4, null, null, 2, null, 0, -1, null];
+    return [st, (i, t) => { const s = i % 16, d = prog[Math.floor(i / 16) % 4];
+      if (s % 4 === 2) f.chord(d + 7, 3).forEach(x => K.epiano(t, x, st * 1.1, 0.35));
+      if (s === 8) { K.kick(t, 0.8); K.rim(t, 1); } if (s % 2 === 0) K.hat(t, s % 4 === 2 ? 0.3 : 0.15);
+      const b = line[s]; if (b !== null) K.bass(t, f(d + b - 7), st * 2.5, 0.9, 220, 1, "sine");
+      if (Math.floor(i / 64) % 2 && s === 0 && Math.random() < 0.6) K.bell(t, f(d + 14), 0.4, 1.4, 2); }]; },
+  // swing: a walking bass, the ride cymbal's ding-ga-ding, piano comping
+  swing(K) { const f = tuner(rnd(110, 147), MODES.mixo), prog = pick([[1, 4, 0, 0], [0, 5, 1, 4], [2, 5, 1, 4]]), st = 60 / rnd(128, 150) / 3, mel = tune(8, 7, 14, 0.7);
+    return [st, (i, t) => { const s = i % 12, d = prog[Math.floor(i / 12) % 4];
+      if ([0, 3, 5, 6, 9, 11].includes(s)) K.hat(t, s % 3 ? 0.25 : 0.4, s === 0);
+      if (s % 3 === 0) { const step = [0, 2, 4, 5][s / 3]; K.bass(t, f(d + step - 7), st * 2.6, 0.8, 380, 1, "triangle"); }
+      if ((s === 5 || s === 11) && Math.random() < 0.6) [0, 2, 4, 6].forEach(k => K.piano(t, f(d + k + 7), st * 1.5, 0.3));
+      if (s === 3 || s === 9) K.rim(t, 0.4);
+      const m = mel[Math.floor(i / 3) % mel.length]; if (s % 3 === 0 && m !== null && Math.floor(i / 48) % 2) K.epiano(t, f(m + 7), st * 2.5, 0.5); }]; },
+  // a Baroque prelude: a harpsichord running in sixteenths over a stepping bass
+  baroque(K) { const f = tuner(rnd(130, 175), pick([MODES.major, MODES.minor])), prog = pick([[0, 5, 3, 4], [0, 3, 6, 2, 5, 1, 4, 0], [0, 4, 5, 2, 3, 0, 3, 4]]), st = 60 / rnd(96, 110) / 4, fig = pick([[0, 2, 4, 7, 4, 2], [0, 4, 7, 9, 7, 4], [7, 4, 2, 0, 2, 4]]);
+    return [st, (i, t) => { const s = i % 16, d = prog[Math.floor(i / 16) % prog.length];
+      K.pluck(t, f(d + fig[i % fig.length] + 7), st * 1.6, 0.4, 0.85);
+      if (s % 4 === 0) K.pluck(t, f(d - 7 - s / 4), st * 4, 0.7, 0.75); }]; },
+  // afrobeat: guitars interlocking, a shaker that never stops, a looping bass riff, horn stabs
+  afrobeat(K) { const f = tuner(rnd(98, 117), pick([MODES.dorian, MODES.minor])), st = 60 / rnd(104, 114) / 4, riff = [0, null, 0, 3, null, 4, null, 3, 0, null, -2, null, 0, null, 4, null], g1 = [1, 0, 1, 1, 0, 1, 0, 1], g2 = [0, 1, 0, 0, 1, 0, 1, 0];
+    return [st, (i, t) => { const s = i % 16, bar = Math.floor(i / 16), d = bar % 4 === 3 ? 3 : 0;
+      K.shaker(t, s % 2 ? 0.5 : 0.8); if (s === 0 || s === 10) K.kick(t, 0.8); if (s === 4 || s === 12) K.snare(t, 0.6); else if (Math.random() < 0.2) K.snare(t, 0.12);
+      if (riff[s] !== null) K.bass(t, f(riff[s] + d - 7), st * 1.6, 0.85, 320, 3);
+      if (g1[s % 8]) K.pluck(t, f(d + 9 + (s % 3)), st * 0.8, 0.35, 0.8); if (g2[s % 8] && bar > 1) K.pluck(t, f(d + 11), st * 0.8, 0.3, 0.9);
+      if (bar % 2 && (s === 6 || s === 7)) f.chord(d + 7, 3).forEach(x => K.chip(t, x, st * 0.7, 0.6, "sawtooth")); }]; },
+  // drum and bass: very fast broken drums under a slow, deep bass and soft pads
+  dnb(K) { const f = tuner(rnd(41, 49), MODES.minor), prog = pick([[0, 5, 3, 4], [0, 0, 5, 6]]), st = 60 / rnd(170, 176) / 4;
+    return [st, (i, t) => { const s = i % 16, bar = Math.floor(i / 16), d = prog[Math.floor(bar / 2) % 4];
+      if (s === 0 || s === 10) K.kick(t, 0.9); if (s === 4 || s === 12) K.snare(t, 0.7); if (s === 7 && Math.random() < 0.5) K.snare(t, 0.2);
+      K.hat(t, s % 2 ? 0.12 : 0.22, s === 14);
+      if (s === 0 && bar % 2 === 0) { K.sub(t, f(d), st * 30, 0.9); K.pad(t, f.chord(d + 14, 3), st * 32, 0.8, 1200); }
+      if (bar % 4 >= 2 && s % 4 === 2 && Math.random() < 0.5) K.bell(t, f(d + 21 + pick([0, 2, 4])), 0.3, 1.2, 2); }]; },
+  // a quiet piano: broken chords rocking back and forth, a few melody notes floating over them
+  minimal(K) { const f = tuner(rnd(110, 140), pick([MODES.major, MODES.minor])), prog = pick([[0, 5, 3, 4], [5, 3, 0, 4], [0, 4, 5, 3]]), st = 60 / rnd(64, 72) / 2, mel = tune(8, 9, 15, 0.5);
+    return [st, (i, t) => { const s = i % 8, d = prog[Math.floor(i / 8) % 4], pat = [0, 4, 7, 4, 9, 4, 7, 4];
+      K.piano(t, f(d + pat[s] - (s === 0 ? 7 : 0)), st * 3, s === 0 ? 0.7 : 0.4);
+      const m = mel[Math.floor(i / 2) % mel.length]; if (s % 2 === 0 && m !== null && Math.floor(i / 32) % 2) K.piano(t, f(m + 7), st * 3, 0.55); }]; },
+  // trip-hop: a heavy, slow beat, a dark pad, a bell melody far away
+  triphop(K) { const f = tuner(rnd(98, 117), MODES.minor), prog = pick([[0, 0, 5, 4], [0, 3, 0, 6]]), st = 60 / rnd(80, 88) / 4, mel = tune(16, 9, 15, 0.3);
+    return [st, (i, t) => { const s = i % 16, bar = Math.floor(i / 16), d = prog[bar % 4];
+      if (s === 0 || s === 7 || s === 11) K.kick(t, s ? 0.6 : 0.95); if (s === 8) K.snare(t, 0.85); if (s % 4 === 2) K.hat(t, 0.2, s === 14);
+      if (s === 0) { K.pad(t, f.chord(d + 7, 3), st * 16, 1, 700); K.bass(t, f(d - 7), st * 12, 0.7, 180, 1, "sine"); }
+      const m = mel[i % mel.length]; if (bar > 1 && m !== null && s % 2 === 0) K.bell(t, f(m + 7), 0.25, 1.8, 2); K.crackle(t); }]; },
+  // cumbia: a scraper on every step, congas answering, the bass walking root to fifth, a squeezebox tune
+  cumbia(K) { const f = tuner(rnd(110, 147), pick([MODES.major, MODES.minor])), prog = pick([[0, 4, 4, 0], [0, 3, 4, 0], [0, 5, 3, 4]]), st = 60 / rnd(92, 100) / 4, mel = tune(16, 7, 14, 0.55);
+    return [st, (i, t) => { const s = i % 16, d = prog[Math.floor(i / 16) % 4];
+      K.shaker(t, s % 4 === 0 ? 0.9 : 0.45); if (s % 8 === 6) K.tom(t, 180, 0.5, 0.15); if (s % 8 === 7) K.tom(t, 150, 0.4, 0.15);
+      if (s === 0 || s === 8) K.bass(t, f(d + (s ? 4 : 0) - 7), st * 3, 0.85, 300, 1, "triangle");
+      if (s % 4 === 2) f.chord(d + 7, 3).forEach(x => K.pluck(t, x, st * 1.2, 0.3, 0.5));
+      const m = mel[Math.floor(i / 2) % mel.length]; if (i % 2 === 0 && m !== null && Math.floor(i / 64) % 2) K.strings(t, f(m), st * 1.7, 0.75); }]; },
+  // a slow hymn: four voices moving together, an organ-like sound, a high voice above
+  hymn(K) { const f = tuner(rnd(110, 147), MODES.major), prog = pick([[0, 3, 4, 0, 5, 1, 4, 0], [0, 5, 3, 4, 0, 3, 4, 0]]), st = 60 / rnd(50, 58), mel = tune(8, 7, 11, 1, 1);
+    return [st, (i, t) => { const d = prog[Math.floor(i / 2) % prog.length];
+      if (i % 2 === 0) { K.pad(t, [f(d - 7), ...f.chord(d, 3)], st * 2, 1.3, 1100); K.sub(t, f(d - 7), st * 2, 0.4); }
+      const m = mel[i % mel.length]; if (m !== null) K.flute(t, f(m + 7), st * 0.95, 0.55); }]; }
 };
 // some styles are naturally quieter than others; even them out
-const LEVEL = { ambient: 1.8, waltz: 2, lullaby: 2, bossa: 1.6, phase: 1.6, raga: 1.6, gamelan: 1.6, jig: 1.4, chip: 1.3, lofi: 0.8, house: 0.8, synthwave: 0.75 };
+const LEVEL = { ambient: 1.8, waltz: 2, lullaby: 2, bossa: 1.6, phase: 1.6, raga: 1.6, gamelan: 1.6, jig: 1.4, chip: 1.3, lofi: 0.8, house: 0.8, synthwave: 0.75,
+  tango: 1.3, reggae: 1.1, swing: 2, baroque: 1.5, afrobeat: 1, dnb: 0.85, minimal: 3, triphop: 0.95, cumbia: 2, hymn: 0.9 };
 Object.assign(COMPOSERS, {
   endless(ctx, out) {
     let cur = null, recent = [], timer = null;
@@ -2638,7 +2703,17 @@ const WC_PALETTES = {
   gamelan: [[180, 140, 70], [70, 150, 120], [150, 90, 60], [200, 190, 130]],
   lullaby: [[240, 180, 200], [160, 200, 240], [250, 230, 190], [200, 180, 230]],
   synthwave: [[160, 80, 180], [240, 110, 150], [80, 90, 180], [250, 170, 150]],
-  maqam: [[60, 170, 170], [200, 110, 70], [230, 190, 120], [70, 110, 160]]
+  maqam: [[60, 170, 170], [200, 110, 70], [230, 190, 120], [70, 110, 160]],
+  tango: [[170, 40, 50], [60, 50, 60], [210, 150, 120], [120, 60, 80]],
+  reggae: [[80, 150, 80], [230, 190, 70], [200, 80, 60], [120, 170, 110]],
+  swing: [[60, 70, 120], [200, 150, 80], [140, 100, 80], [90, 120, 160]],
+  baroque: [[190, 150, 80], [120, 60, 70], [80, 90, 120], [220, 200, 160]],
+  afrobeat: [[220, 120, 40], [60, 120, 100], [200, 60, 60], [240, 190, 90]],
+  dnb: [[50, 90, 140], [90, 60, 150], [40, 140, 160], [150, 170, 200]],
+  minimal: [[150, 160, 170], [190, 180, 160], [130, 140, 160], [210, 200, 190]],
+  triphop: [[80, 70, 110], [130, 100, 90], [60, 90, 110], [160, 140, 150]],
+  cumbia: [[240, 150, 60], [60, 160, 140], [230, 90, 100], [250, 210, 90]],
+  hymn: [[200, 180, 130], [150, 160, 200], [230, 210, 170], [170, 140, 170]]
 };
 function wcSetup() {
   const cv = document.createElement("canvas"), gl = cv.getContext("webgl2", { alpha: false, antialias: false, premultipliedAlpha: false });
@@ -2924,8 +2999,7 @@ function render(t, dt) {
 let last = performance.now(), time = 0;
 function frame(now) {
   const dt = Math.min(0.05, (now - last) / 1000); last = now; time += dt;
-  listen(dt, time);
-  render(time, dt);
+  if (!window.STUDIO_OPEN) { listen(dt, time); render(time, dt); } // the ♪ studio draws its own sculpture
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
@@ -2943,6 +3017,7 @@ ROOMS.forEach((room, i) => {
   b.setAttribute("aria-label", room && room.label ? "Surprise: music that keeps changing" : room ? "Style " + (i + 1) : "Style " + (i + 1) + ", coming soon");
   b.title = room ? "" : "Coming soon";
   b.disabled = !room;
+  b.dataset.room = String(i);
   b.addEventListener("click", () => chooseRoom(i));
   roomsEl.appendChild(b);
 });
@@ -2952,7 +3027,7 @@ function renderControls() {
   document.getElementById("credit").hidden = piece.art !== "field";
   mc.hidden = !piece.by; mc.textContent = piece.by ? "Music by " + piece.by : "";
   mc.style.bottom = piece.art === "field" ? "calc(26px + env(safe-area-inset-bottom, 0px))" : "";
-  [...roomsEl.children].forEach((b, i) => b.setAttribute("aria-current", String(i === roomIndex)));
+  [...roomsEl.querySelectorAll("[data-room]")].forEach((b, i) => b.setAttribute("aria-current", String(i === roomIndex)));
   piecesEl.innerHTML = "";
   if (ROOMS[roomIndex].pieces.length > 1) ROOMS[roomIndex].pieces.forEach((p, i) => {
     const b = document.createElement("button");
@@ -2998,3 +3073,4 @@ const start = parseInt((location.hash.match(/^#s(\d)$/) || [])[1], 10) - 1;
 roomIndex = ROOMS[start] ? start : 0;
 renderControls();
 </script>
+<script src="studio.js" charset="utf-8"></script>
