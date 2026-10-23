@@ -1,8 +1,8 @@
 // ================================================================
 // ROOM 2 — three real materials, each rendered in its own medium.
 //   i   a fresco: mineral pigment soaked into lime plaster on a wall
-//   ii  an embroidered silk shawl: woven ground, satin-stitched flowers, a fringe of single threads
-//   iii the house front after Casa Vicens, built in 3D: brick, glazed tile, stone, iron and wood in sunlight
+//   ii  an embroidered silk shawl (retired Oct 23: 2ii is now the azulejos in room2b.js)
+//   iii the house front after Casa Vicens (retired Oct 23: 2iii is now the flamenco skirt and fan in room2b.js)
 // Everything is drawn at the screen's full pixel density so it stays sharp on Retina displays.
 // ================================================================
 const R2 = {};

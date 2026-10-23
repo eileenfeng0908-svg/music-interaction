@@ -85,6 +85,7 @@ button:disabled { color: var(--line); cursor: default; }
 <script src="rain.js"></script>
 <script src="paint.js"></script>
 <script src="room2.js"></script>
+<script src="room2b.js"></script>
 <script src="room3.js"></script>
 <script src="room4.js"></script>
 <script src="room5.js"></script>
@@ -2821,8 +2822,8 @@ const ARTS = {
   arch: { scene: archScene },
   loom: { scene: loomScene },
   moon: { scene: moonScene, real: "fresco" },
-  manton: { scene: mantonScene },
-  feria: { scene: feriaScene },
+  manton: { scene: azulejoScene },
+  feria: { scene: flamencoScene },
   sun: { scene: sunScene },
   heaven: { scene: heavenScene },
   lilies: { scene: liliesScene, paint: "monet" },
@@ -2857,8 +2858,10 @@ function onBeat() {
   if (art === "koi") koiBeatInk();
   if (art === "eisho") bloomBeat();
   if (art === "mist") mistBeat();
-  if (art === "manton") { manton.fr.v += manton.side * (1.4 + S.bass); manton.ang.v += manton.side * 0.6; manton.side *= -1; }
-  if (art === "feria") { feria.wave = 0; feria.splash = 1; feria.palm.v += (Math.random() < 0.5 ? -1 : 1) * (0.6 + S.bass); }
+  if (art === "manton") azulejoBeat();
+  if (art === "manton_old") { manton.fr.v += manton.side * (1.4 + S.bass); manton.ang.v += manton.side * 0.6; manton.side *= -1; }
+  if (art === "feria") flamencoBeat();
+  if (art === "feria_old") { feria.wave = 0; feria.splash = 1; feria.palm.v += (Math.random() < 0.5 ? -1 : 1) * (0.6 + S.bass); }
 }
 
 // ---------- The kaleidoscope: mirrors drawn as sharp shapes ----------
