@@ -87,6 +87,7 @@ button:disabled { color: var(--line); cursor: default; }
 <script src="room2.js"></script>
 <script src="room3.js"></script>
 <script src="room4.js"></script>
+<script src="room5.js"></script>
 <script src="chapel3d.js"></script>
 <script>
 // ================================================================
@@ -2829,8 +2830,8 @@ const ARTS = {
   scream: { scene: screamFlow },
   chapel: { scene: chapel3dScene },
   kimono: { scene: kimonoScene },
-  koi: { scene: koiScene },
-  eisho: { scene: eishoScene },
+  koi: { scene: koiInkScene },
+  eisho: { scene: bloomScene },
   blank: { scene: blankScene },
   mist: { scene: mistScene },
   field: { scene: fieldScene },
@@ -2853,8 +2854,8 @@ function onBeat() {
   if (art === "guitarist") guitaristBeat();
   if (art === "scream") screamBeat();
   if (art === "kimono") kimonoBeat();
-  if (art === "koi") koiBeat();
-  if (art === "eisho") eishoBeat();
+  if (art === "koi") koiBeatInk();
+  if (art === "eisho") bloomBeat();
   if (art === "mist") mistBeat();
   if (art === "manton") { manton.fr.v += manton.side * (1.4 + S.bass); manton.ang.v += manton.side * 0.6; manton.side *= -1; }
   if (art === "feria") { feria.wave = 0; feria.splash = 1; feria.palm.v += (Math.random() < 0.5 ? -1 : 1) * (0.6 + S.bass); }
